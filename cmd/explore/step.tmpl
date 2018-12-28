@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Step {{ .Step }}/{{ .NSteps }} of {{ .FuncName }} - visualization of control flow analysis</title>
+	</head>
+	<body>
+		<img src="../{{ .LLName }}_graphs/{{ .FuncName }}_{{ printf "%04da" .Step }}.png" alt="Control flow graph of {{ .FuncName }}, before merge of step {{ .Step }}.">
+	</body>
+</html>

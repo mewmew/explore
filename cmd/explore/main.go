@@ -24,6 +24,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -31,11 +32,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/llir/llvm/asm"
 	"github.com/llir/llvm/ir"
+	"github.com/mewkiz/pkg/goutil"
+	"github.com/mewkiz/pkg/jsonutil"
 	"github.com/mewkiz/pkg/pathutil"
 	"github.com/mewkiz/pkg/term"
+	"github.com/mewmew/lnp/pkg/cfa/primitive"
 	"github.com/pkg/errors"
 )
 
@@ -122,7 +127,7 @@ func main() {
 			log.Fatalf("%+v", err)
 		}
 		// Generate HTML visualizations.
-		if err := explore(m, dotDir, htmlDir, funcNames); err != nil {
+		if err := explore(llPath, m, dotDir, htmlDir, funcNames); err != nil {
 			log.Fatalf("%+v", err)
 		}
 	}
@@ -137,12 +142,12 @@ func main() {
 // funcNames specifies the set of function names for which to generate
 // visualizations. When funcNames is emtpy, visualizations are generated for all
 // function definitions of the module.
-func explore(m *ir.Module, dotDir, htmlDir string, funcNames map[string]bool) error {
+func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[string]bool) error {
 	// Get functions set by `-funcs` or all functions if `-funcs` not used.
 	var funcs []*ir.Function
 	for _, f := range m.Funcs {
 		if len(funcNames) > 0 && !funcNames[f.Name()] {
-			dbg.Printf("skipping function %q.", f.Ident())
+			dbg.Printf("skipping function %q.", f.Name())
 			continue
 		}
 		funcs = append(funcs, f)
@@ -155,15 +160,68 @@ func explore(m *ir.Module, dotDir, htmlDir string, funcNames map[string]bool) er
 			continue
 		}
 		// Generate visualization.
-		dbg.Printf("parsing function %q.", f.Ident())
-		var htmlContent []byte
-		// TODO: generate visualization.
-		// Output visualization of control flow analysis in HTML format.
-		if err := outputHTML(htmlContent, f.Name(), htmlDir); err != nil {
+		if err := genVisualization(llPath, f, dotDir, htmlDir); err != nil {
 			return errors.WithStack(err)
 		}
 	}
 	return nil
+}
+
+// genVisualization generates a visualization of the control flow analysis
+// performed on the given function.
+func genVisualization(llPath string, f *ir.Function, dotDir, htmlDir string) error {
+	// Parse control flow primitives JSON file.
+	funcName := f.Name()
+	dbg.Printf("parsing primitives of function %q.", funcName)
+	prims, err := parsePrims(dotDir, funcName)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	// Output visualization of control flow analysis in HTML format.
+	for i, prim := range prims {
+		step := i + 1
+		nsteps := len(prims)
+		htmlName := fmt.Sprintf("%s_%04d.html", funcName, step)
+		htmlPath := filepath.Join(htmlDir, htmlName)
+		htmlContent, err := genStep(llPath, f, prim, step, nsteps)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		dbg.Printf("creating file %q.", htmlPath)
+		if err := ioutil.WriteFile(htmlPath, htmlContent, 0644); err != nil {
+			return errors.WithStack(err)
+		}
+	}
+	return nil
+}
+
+// genStep generates a visualization in HTML format of the intermediate step of
+// the control flow analysis which recovered the control flow primitive of the
+// given function.
+func genStep(llPath string, f *ir.Function, prim *primitive.Primitive, step, nsteps int) ([]byte, error) {
+	llName := pathutil.FileName(llPath)
+	// TODO: embed step.tmpl in binary.
+	srcDir, err := goutil.SrcDir("github.com/mewmew/explore/cmd/explore")
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	tmplPath := filepath.Join(srcDir, "step.tmpl")
+	ts, err := template.ParseFiles(tmplPath)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	t := ts.Lookup("step.tmpl")
+	buf := &bytes.Buffer{}
+	data := map[string]interface{}{
+		"Step":     step,
+		"NSteps":   nsteps,
+		"FuncName": f.Name(),
+		"LLName":   llName,
+	}
+	if err := t.Execute(buf, data); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return buf.Bytes(), nil
 }
 
 // getDOTDir returns the control flow graphs directory based on the path of the
@@ -184,16 +242,16 @@ func getDOTDir(llPath string) (string, error) {
 // createHTMLDir creates and returns an HTML visualization output directory
 // based on the path of the LLVM IR file.
 //
-// For a source file "foo.ll" the output directory "foo_graphs/" is created. If
+// For a source file "foo.ll" the output directory "foo_explore/" is created. If
 // the `-force` flag is set, existing graph directories are overwritten by
 // force.
 func createHTMLDir(llPath string, force bool) (string, error) {
 	var dotDir string
 	switch llPath {
 	case "-":
-		dotDir = "stdin_graphs"
+		dotDir = "stdin_explore"
 	default:
-		dotDir = pathutil.TrimExt(llPath) + "_graphs"
+		dotDir = pathutil.TrimExt(llPath) + "_explore"
 	}
 	if force {
 		// Force overwrite existing graph directories.
@@ -220,6 +278,19 @@ func parseModule(llPath string) (*ir.Module, error) {
 	}
 }
 
+// parsePrims parses the recovered control flow primitives of the given
+// function.
+func parsePrims(dotDir, funcName string) ([]*primitive.Primitive, error) {
+	jsonName := funcName + ".json"
+	jsonPath := filepath.Join(dotDir, jsonName)
+	var prims []*primitive.Primitive
+	if err := jsonutil.ParseFile(jsonPath, &prims); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return prims, nil
+}
+
+/*
 // outputHTML outputs the given control flow analysis visualization in HTML
 // format.
 //
@@ -229,11 +300,11 @@ func parseModule(llPath string) (*ir.Module, error) {
 //    foo_explore/bar.html
 //    foo_explore/baz.html
 func outputHTML(htmlContent []byte, funcName, htmlDir string) error {
-	htmlName := funcName + ".dot"
+	htmlName := funcName + ".html"
 	htmlPath := filepath.Join(htmlDir, htmlName)
-	dbg.Printf("creating file %q.", htmlPath)
 	if err := ioutil.WriteFile(htmlPath, htmlContent, 0644); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil
 }
+*/
