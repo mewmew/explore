@@ -282,11 +282,8 @@ func genLLVMHighlight(llPath string, f *ir.Function, prim *primitive.Primitive, 
 	}
 	llvmContent.WriteString("</body></html>")
 
-	//if err := quick.Highlight(llvmContent, f.Def(), "llvm", "html", "monokai"); err != nil {
-	//	return errors.WithStack(err)
-	//}
 	exploreDir := pathutil.TrimExt(llPath) + "_explore"
-	llvmHTMLName := fmt.Sprintf("llvm_%04d.html", step)
+	llvmHTMLName := fmt.Sprintf("%s_llvm_%04d.html", f.Name(), step)
 	llvmHTMLPath := filepath.Join(exploreDir, llvmHTMLName)
 	dbg.Printf("creating %q", llvmHTMLPath)
 	if err := ioutil.WriteFile(llvmHTMLPath, llvmContent.Bytes(), 0644); err != nil {
