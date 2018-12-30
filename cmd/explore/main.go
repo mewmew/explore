@@ -39,8 +39,10 @@ import (
 	"github.com/alecthomas/chroma/styles"
 	"github.com/llir/llvm/asm"
 	"github.com/llir/llvm/ir"
+	"github.com/llir/llvm/ir/metadata"
 	"github.com/mewkiz/pkg/goutil"
 	"github.com/mewkiz/pkg/jsonutil"
+	"github.com/mewkiz/pkg/osutil"
 	"github.com/mewkiz/pkg/pathutil"
 	"github.com/mewkiz/pkg/term"
 	"github.com/mewmew/lnp/pkg/cfa/primitive"
@@ -147,7 +149,7 @@ func main() {
 // function definitions of the module.
 func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[string]bool) error {
 	// Get functions set by `-funcs` or all functions if `-funcs` not used.
-	var funcs []*ir.Function
+	var funcs []*ir.Func
 	for _, f := range m.Funcs {
 		if len(funcNames) > 0 && !funcNames[f.Name()] {
 			dbg.Printf("skipping function %q.", f.Name())
@@ -163,7 +165,7 @@ func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[
 			continue
 		}
 		// Generate visualization.
-		if err := genVisualization(llPath, f, dotDir, htmlDir); err != nil {
+		if err := genVisualization(llPath, m, f, dotDir, htmlDir); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -172,7 +174,7 @@ func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[
 
 // genVisualization generates a visualization of the control flow analysis
 // performed on the given function.
-func genVisualization(llPath string, f *ir.Function, dotDir, htmlDir string) error {
+func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir string) error {
 	// Parse control flow primitives JSON file.
 	funcName := f.Name()
 	dbg.Printf("parsing primitives of function %q.", funcName)
@@ -180,10 +182,24 @@ func genVisualization(llPath string, f *ir.Function, dotDir, htmlDir string) err
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	cPath := pathutil.TrimExt(llPath) + ".c"
+	hasC := osutil.Exists(cPath)
+	var cSource []byte
+	if hasC {
+		cSource, err = ioutil.ReadFile(cPath)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
 	// Output visualization of control flow analysis in HTML format.
 	for i, prim := range prims {
 		step := i + 1
 		nsteps := len(prims)
+		if hasC {
+			if err := highlightC(llPath, m, f, prim, string(cSource), step, nsteps); err != nil {
+				return errors.WithStack(err)
+			}
+		}
 		htmlName := fmt.Sprintf("%s_%04d.html", funcName, step)
 		htmlPath := filepath.Join(htmlDir, htmlName)
 		htmlContent, err := genStep(llPath, f, prim, step, nsteps)
@@ -204,7 +220,7 @@ func genVisualization(llPath string, f *ir.Function, dotDir, htmlDir string) err
 // genStep generates a visualization in HTML format of the intermediate step of
 // the control flow analysis which recovered the control flow primitive of the
 // given function.
-func genStep(llPath string, f *ir.Function, prim *primitive.Primitive, step, nsteps int) ([]byte, error) {
+func genStep(llPath string, f *ir.Func, prim *primitive.Primitive, step, nsteps int) ([]byte, error) {
 	llName := pathutil.FileName(llPath)
 	// TODO: embed step.tmpl in binary.
 	srcDir, err := goutil.SrcDir("github.com/mewmew/explore/cmd/explore")
@@ -234,7 +250,7 @@ func genStep(llPath string, f *ir.Function, prim *primitive.Primitive, step, nst
 // step of the control flow analysis, highlighting the lines of the LLVM IR for
 // the corresponding basic blocks of the recovered high-level control flow
 // primitive.
-func genLLVMHighlight(llPath string, f *ir.Function, prim *primitive.Primitive, step int) error {
+func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step int) error {
 	// Get Chroma LLVM IR lexer.
 	lexer := lexers.Get("llvm")
 	if lexer == nil {
@@ -272,7 +288,7 @@ func genLLVMHighlight(llPath string, f *ir.Function, prim *primitive.Primitive, 
 	if err := formatter.WriteCSS(llvmContent, style); err != nil {
 		return errors.WithStack(err)
 	}
-	iterator, err := lexer.Tokenise(nil, f.Def())
+	iterator, err := lexer.Tokenise(nil, f.LLString())
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -294,9 +310,9 @@ func genLLVMHighlight(llPath string, f *ir.Function, prim *primitive.Primitive, 
 
 // lineRangeOfBlock returns the line number range (1-based: [start, end]) of the
 // basic block in the given function.
-func lineRangeOfBlock(f *ir.Function, block *ir.BasicBlock) [2]int {
-	funcStr := f.Def()
-	blockStr := block.Def()
+func lineRangeOfBlock(f *ir.Func, block *ir.Block) [2]int {
+	funcStr := f.LLString()
+	blockStr := block.LLString()
 	pos := strings.Index(funcStr, blockStr)
 	if pos == -1 {
 		panic(fmt.Errorf("unable to locate contents of basic block %v in contents of function %v", block.Ident(), f.Ident()))
@@ -376,11 +392,131 @@ func parsePrims(dotDir, funcName string) ([]*primitive.Primitive, error) {
 
 // findBlock locates and returns the basic block with the specified name in the
 // given function.
-func findBlock(f *ir.Function, blockName string) (*ir.BasicBlock, error) {
+func findBlock(f *ir.Func, blockName string) (*ir.Block, error) {
 	for _, block := range f.Blocks {
 		if block.Name() == blockName {
 			return block, nil
 		}
 	}
 	return nil, errors.Errorf("unable to locate basic block %q in function %q", blockName, f.Name())
+}
+
+// highlightCRanges returns line ranges within the C source code to highlight the
+// lines associated with the basic block of the recovered control flow
+// primitive.
+func highlightCRanges(m *ir.Module, f *ir.Func, prim *primitive.Primitive) ([][2]int, error) {
+	var highlightRanges [][2]int
+	for _, blockName := range prim.Nodes {
+		block, err := findBlock(f, blockName)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		highlightRange := lineRangeOfBlockInC(m, block)
+		highlightRanges = append(highlightRanges, highlightRange...)
+	}
+	return highlightRanges, nil
+}
+
+type valueWithMetadata interface {
+	MDAttachments() []*metadata.Attachment
+}
+
+// lineRangeOfBlockInC returns the line range of the given block, as based on
+// the DILocation debug information of the instructions and terminator of that
+// block.
+func lineRangeOfBlockInC(m *ir.Module, block *ir.Block) [][2]int {
+	var ranges [][2]int
+	//var min, max int
+	var vals []valueWithMetadata
+	for _, inst := range block.Insts {
+		vals = append(vals, inst.(valueWithMetadata))
+	}
+	vals = append(vals, block.Term.(valueWithMetadata))
+	for _, val := range vals {
+		for _, md := range val.MDAttachments() {
+			if md.Name == "dbg" {
+				if loc, ok := diLocation(md.Node); ok {
+					line := int(loc.Line)
+					//if min == 0 || line < min {
+					//	min = line
+					//}
+					//if max == 0 || line > max {
+					//	max = line
+					//}
+					r := [2]int{line, line}
+					ranges = append(ranges, r)
+					//min = 0
+					//max = 0
+				}
+			}
+		}
+	}
+	return ranges
+}
+
+// diLocation returns the DILocation specialized metadata node based on the
+// given MDNode. The boolean return value indicates sucess.
+func diLocation(node metadata.MDNode) (*metadata.DILocation, bool) {
+	if n, ok := node.(*metadata.Def); ok {
+		node = n.Node
+	}
+	if loc, ok := node.(*metadata.DILocation); ok {
+		return loc, true
+	}
+	return nil, false
+}
+
+// highlightC outputs a highlighted C source file, highlighting the lines
+// associated with the basic block of the recovered control flow primitive.
+func highlightC(llPath string, m *ir.Module, f *ir.Func, prim *primitive.Primitive, cSource string, step, nsteps int) error {
+	// Get Chroma C lexer.
+	lexer := lexers.Get("c")
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	//lexer = chroma.Coalesce(lexer)
+	// Get Chrome Monokai style.
+	style := styles.Get("monokai")
+	if style == nil {
+		style = styles.Fallback
+	}
+	// Get Chroma HTML formatter.
+	// Line number ranges to highlight; 1-based line numbers, inclusive.
+	highlightRanges, err := highlightCRanges(m, f, prim)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	formatter := html.New(
+		html.TabWidth(3),
+		html.WithLineNumbers(),
+		// TODO: re-enable once https://github.com/alecthomas/chroma/issues/211 is fixed.
+		//html.WithClasses(),
+		html.LineNumbersInTable(),
+		html.HighlightLines(highlightRanges),
+	)
+
+	// Write CSS.
+	htmlContent := &bytes.Buffer{}
+	htmlContent.WriteString("<!DOCTYPE html><html><head><style>")
+	if err := formatter.WriteCSS(htmlContent, style); err != nil {
+		return errors.WithStack(err)
+	}
+	iterator, err := lexer.Tokenise(nil, cSource)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	htmlContent.WriteString("</style></head><body>")
+	if err := formatter.Format(htmlContent, style, iterator); err != nil {
+		return errors.WithStack(err)
+	}
+	htmlContent.WriteString("</body></html>")
+
+	exploreDir := pathutil.TrimExt(llPath) + "_explore"
+	cHTMLName := fmt.Sprintf("%s_c_%04d.html", f.Name(), step)
+	cHTMLPath := filepath.Join(exploreDir, cHTMLName)
+	dbg.Printf("creating %q", cHTMLPath)
+	if err := ioutil.WriteFile(cHTMLPath, htmlContent.Bytes(), 0644); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }
