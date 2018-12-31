@@ -31,6 +31,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -620,13 +621,23 @@ func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSour
 // highlightGo outputs a highlighted Go source file, highlighting the lines
 // associated with the recovered control flow primitive.
 func highlightGo(llPath string, funcName string, step, nsteps int) error {
-	goPath := pathutil.TrimExt(llPath) + ".go"
-	buf, err := ioutil.ReadFile(goPath)
+	dotDir := pathutil.TrimExt(llPath) + "_graphs"
+	prims, err := parsePrims(dotDir, funcName)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	goSource := string(buf)
-	// Get Chroma C lexer.
+	// TODO: add before and after stage; i.e. step_0001a and step_0001b.
+	prims = prims[:step]
+	goSource, err := decompGo(llPath, funcName, prims)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	//buf, err := ioutil.ReadFile(goPath)
+	//if err != nil {
+	//	return errors.WithStack(err)
+	//}
+	//goSource := string(buf)
+	//// Get Chroma C lexer.
 	lexer := lexers.Get("go")
 	if lexer == nil {
 		lexer = lexers.Fallback
@@ -670,6 +681,42 @@ func highlightGo(llPath string, funcName string, step, nsteps int) error {
 		return errors.WithStack(err)
 	}
 	return nil
+}
+
+// decompGo decompiles the LLVM IR module into Go source code, based on the
+// given recovered control flow primitives.
+func decompGo(llPath, funcName string, prims []*primitive.Primitive) (string, error) {
+	tmpDir, err := ioutil.TempDir("", "decomp-")
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	newLLPath := filepath.Join(tmpDir, filepath.Base(llPath))
+	if err := dircopy.Copy(llPath, newLLPath); err != nil {
+		return "", errors.WithStack(err)
+	}
+	fmt.Println("tmpDir:", tmpDir)
+	dotDir := filepath.Join(tmpDir, fmt.Sprintf("%s_graphs", pathutil.FileName(llPath)))
+	if err := os.MkdirAll(dotDir, 0755); err != nil {
+		return "", errors.WithStack(err)
+	}
+	fmt.Println("dotDir:", dotDir)
+	jsonPath := filepath.Join(dotDir, fmt.Sprintf("%s.json", funcName))
+	if err := jsonutil.WriteFile(jsonPath, prims); err != nil {
+		return "", errors.WithStack(err)
+	}
+	fmt.Println("jsonPath:", jsonPath)
+	funcs := funcName
+	cmd := exec.Command("ll2go2", "-funcs", funcs, newLLPath)
+	buf := &bytes.Buffer{}
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = buf
+	cmd.Stderr = os.Stderr
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		return "", errors.WithStack(err)
+	}
+	fmt.Println(buf.String())
+	return buf.String(), nil
 }
 
 // copyFile copies the source file to the destination path.
