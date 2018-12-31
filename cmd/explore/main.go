@@ -202,7 +202,7 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir s
 		nsteps := len(prims)
 		if hasC {
 			// Generate C visualization.
-			if err := highlightC(llPath, m, f, prim, string(cSource), step, nsteps); err != nil {
+			if err := highlightC(llPath, f.Name(), prim, string(cSource), step, nsteps); err != nil {
 				return errors.WithStack(err)
 			}
 		}
@@ -472,6 +472,17 @@ func findBlock(f *ir.Func, blockName string) (*ir.Block, error) {
 	return nil, errors.Errorf("unable to locate basic block %q in function %q", blockName, f.Name())
 }
 
+// findFunc locates and returns the function with the specified name in the
+// given module.
+func findFunc(m *ir.Module, funcName string) (*ir.Func, error) {
+	for _, f := range m.Funcs {
+		if f.Name() == funcName {
+			return f, nil
+		}
+	}
+	return nil, errors.Errorf("unable to locate function %q in module", funcName)
+}
+
 // highlightCRanges returns line ranges within the C source code to highlight the
 // lines associated with the basic block of the recovered control flow
 // primitive.
@@ -539,7 +550,16 @@ func diLocation(node metadata.MDNode) (*metadata.DILocation, bool) {
 
 // highlightC outputs a highlighted C source file, highlighting the lines
 // associated with the basic block of the recovered control flow primitive.
-func highlightC(llPath string, m *ir.Module, f *ir.Func, prim *primitive.Primitive, cSource string, step, nsteps int) error {
+func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSource string, step, nsteps int) error {
+	llDbgPath := pathutil.TrimExt(llPath) + "_dbg.ll"
+	m, err := asm.ParseFile(llDbgPath)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	f, err := findFunc(m, funcName)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 	// Get Chroma C lexer.
 	lexer := lexers.Get("c")
 	if lexer == nil {
