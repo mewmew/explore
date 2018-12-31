@@ -192,6 +192,7 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir s
 			return errors.WithStack(err)
 		}
 	}
+
 	// Copy CSS include files.
 	if err := copyStyles(llPath); err != nil {
 		return errors.WithStack(err)
@@ -206,6 +207,12 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir s
 				return errors.WithStack(err)
 			}
 		}
+
+		// Generate Go visualization.
+		if err := highlightGo(llPath, f.Name(), step, nsteps); err != nil {
+			return errors.WithStack(err)
+		}
+
 		// Generate overview.
 		if err := genOverview(llPath, funcName, step, nsteps); err != nil {
 			return errors.WithStack(err)
@@ -605,6 +612,61 @@ func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSour
 	cHTMLPath := filepath.Join(exploreDir, cHTMLName)
 	dbg.Printf("creating %q", cHTMLPath)
 	if err := ioutil.WriteFile(cHTMLPath, htmlContent.Bytes(), 0644); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+// highlightGo outputs a highlighted Go source file, highlighting the lines
+// associated with the recovered control flow primitive.
+func highlightGo(llPath string, funcName string, step, nsteps int) error {
+	goPath := pathutil.TrimExt(llPath) + ".go"
+	buf, err := ioutil.ReadFile(goPath)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	goSource := string(buf)
+	// Get Chroma C lexer.
+	lexer := lexers.Get("go")
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	//lexer = chroma.Coalesce(lexer)
+	// Get Chrome Monokai style.
+	style := styles.Get("monokai")
+	if style == nil {
+		style = styles.Fallback
+	}
+	// Get Chroma HTML formatter.
+	formatter := html.New(
+		html.TabWidth(3),
+		html.WithLineNumbers(),
+		html.WithClasses(),
+		html.LineNumbersInTable(),
+		//html.HighlightLines(highlightRanges),
+	)
+
+	// Write CSS.
+	htmlContent := &bytes.Buffer{}
+	htmlContent.WriteString("<!DOCTYPE html><html><head><style>")
+	if err := formatter.WriteCSS(htmlContent, style); err != nil {
+		return errors.WithStack(err)
+	}
+	iterator, err := lexer.Tokenise(nil, goSource)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	htmlContent.WriteString("</style></head><body>")
+	if err := formatter.Format(htmlContent, style, iterator); err != nil {
+		return errors.WithStack(err)
+	}
+	htmlContent.WriteString("</body></html>")
+
+	exploreDir := pathutil.TrimExt(llPath) + "_explore"
+	goHTMLName := fmt.Sprintf("%s_go_%04d.html", funcName, step)
+	goHTMLPath := filepath.Join(exploreDir, goHTMLName)
+	dbg.Printf("creating %q", goHTMLPath)
+	if err := ioutil.WriteFile(goHTMLPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil
