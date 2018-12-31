@@ -287,8 +287,7 @@ func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step
 	formatter := html.New(
 		html.TabWidth(3),
 		html.WithLineNumbers(),
-		// TODO: re-enable once https://github.com/alecthomas/chroma/issues/211 is fixed.
-		//html.WithClasses(),
+		html.WithClasses(),
 		html.LineNumbersInTable(),
 		html.HighlightLines(highlightRanges),
 	)
@@ -580,8 +579,7 @@ func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSour
 	formatter := html.New(
 		html.TabWidth(3),
 		html.WithLineNumbers(),
-		// TODO: re-enable once https://github.com/alecthomas/chroma/issues/211 is fixed.
-		//html.WithClasses(),
+		html.WithClasses(),
 		html.LineNumbersInTable(),
 		html.HighlightLines(highlightRanges),
 	)
