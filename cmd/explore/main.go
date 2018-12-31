@@ -27,12 +27,12 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
 
 	"github.com/alecthomas/chroma/formatters/html"
 	"github.com/alecthomas/chroma/lexers"
@@ -46,6 +46,7 @@ import (
 	"github.com/mewkiz/pkg/pathutil"
 	"github.com/mewkiz/pkg/term"
 	"github.com/mewmew/lnp/pkg/cfa/primitive"
+	dircopy "github.com/otiai10/copy"
 	"github.com/pkg/errors"
 )
 
@@ -191,16 +192,26 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir s
 			return errors.WithStack(err)
 		}
 	}
+	// Copy CSS include files.
+	if err := copyStyles(llPath); err != nil {
+		return errors.WithStack(err)
+	}
 	// Output visualization of control flow analysis in HTML format.
 	for i, prim := range prims {
 		step := i + 1
 		nsteps := len(prims)
 		if hasC {
+			// Generate C visualization.
 			if err := highlightC(llPath, m, f, prim, string(cSource), step, nsteps); err != nil {
 				return errors.WithStack(err)
 			}
 		}
-		htmlName := fmt.Sprintf("%s_%04d.html", funcName, step)
+		// Generate overview.
+		if err := genOverview(llPath, funcName, step, nsteps); err != nil {
+			return errors.WithStack(err)
+		}
+		// Generate control flow analysis visualization.
+		htmlName := fmt.Sprintf("%s_cfa_%04d.html", funcName, step)
 		htmlPath := filepath.Join(htmlDir, htmlName)
 		htmlContent, err := genStep(llPath, f, prim, step, nsteps)
 		if err != nil {
@@ -222,17 +233,17 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir s
 // given function.
 func genStep(llPath string, f *ir.Func, prim *primitive.Primitive, step, nsteps int) ([]byte, error) {
 	llName := pathutil.FileName(llPath)
-	// TODO: embed step.tmpl in binary.
+	// TODO: embed cfa_step.tmpl in binary.
 	srcDir, err := goutil.SrcDir("github.com/mewmew/explore/cmd/explore")
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	tmplPath := filepath.Join(srcDir, "step.tmpl")
+	tmplPath := filepath.Join(srcDir, "cfa_step.tmpl")
 	ts, err := template.ParseFiles(tmplPath)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	t := ts.Lookup("step.tmpl")
+	t := ts.Lookup("cfa_step.tmpl")
 	buf := &bytes.Buffer{}
 	data := map[string]interface{}{
 		"Step":     step,
@@ -283,26 +294,86 @@ func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step
 	)
 
 	// Write CSS.
-	llvmContent := &bytes.Buffer{}
-	llvmContent.WriteString("<!DOCTYPE html><html><head><style>")
-	if err := formatter.WriteCSS(llvmContent, style); err != nil {
+	htmlContent := &bytes.Buffer{}
+	htmlContent.WriteString("<!DOCTYPE html><html><head><style>")
+	if err := formatter.WriteCSS(htmlContent, style); err != nil {
 		return errors.WithStack(err)
 	}
 	iterator, err := lexer.Tokenise(nil, f.LLString())
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	llvmContent.WriteString("</style></head><body>")
-	if err := formatter.Format(llvmContent, style, iterator); err != nil {
+	htmlContent.WriteString("</style></head><body>")
+	if err := formatter.Format(htmlContent, style, iterator); err != nil {
 		return errors.WithStack(err)
 	}
-	llvmContent.WriteString("</body></html>")
+	htmlContent.WriteString("</body></html>")
 
 	exploreDir := pathutil.TrimExt(llPath) + "_explore"
 	llvmHTMLName := fmt.Sprintf("%s_llvm_%04d.html", f.Name(), step)
 	llvmHTMLPath := filepath.Join(exploreDir, llvmHTMLName)
 	dbg.Printf("creating %q", llvmHTMLPath)
-	if err := ioutil.WriteFile(llvmHTMLPath, llvmContent.Bytes(), 0644); err != nil {
+	if err := ioutil.WriteFile(llvmHTMLPath, htmlContent.Bytes(), 0644); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+// genOverview generates an overview in HTML of the intermediate step of the
+// decompilation.
+func genOverview(llPath, funcName string, step, nsteps int) error {
+	llName := pathutil.FileName(llPath)
+	// TODO: embed step_overview.tmpl in binary.
+	srcDir, err := goutil.SrcDir("github.com/mewmew/explore/cmd/explore")
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	tmplPath := filepath.Join(srcDir, "step_overview.tmpl")
+	ts, err := template.ParseFiles(tmplPath)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	t := ts.Lookup("step_overview.tmpl")
+	htmlContent := &bytes.Buffer{}
+	var pages []int
+	for page := 1; page <= nsteps; page++ {
+		pages = append(pages, page)
+	}
+	data := map[string]interface{}{
+		"Pages":    pages,
+		"Step":     step,
+		"Prev":     step - 1,
+		"Next":     step + 1,
+		"NSteps":   nsteps,
+		"FuncName": funcName,
+		"LLName":   llName,
+	}
+	if err := t.Execute(htmlContent, data); err != nil {
+		return errors.WithStack(err)
+	}
+	// Store HTML file.
+	exploreDir := pathutil.TrimExt(llPath) + "_explore"
+	overviewHTMLName := fmt.Sprintf("%s_%04d.html", funcName, step)
+	overviewHTMLPath := filepath.Join(exploreDir, overviewHTMLName)
+	dbg.Printf("creating %q", overviewHTMLPath)
+	if err := ioutil.WriteFile(overviewHTMLPath, htmlContent.Bytes(), 0644); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+// copyStyles copies the styles to the explore output directory.
+func copyStyles(llPath string) error {
+	// Locate CSS files.
+	srcPath, err := goutil.SrcDir("github.com/mewmew/explore/inc")
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	// Copy CSS files.
+	exploreDir := pathutil.TrimExt(llPath) + "_explore"
+	dstPath := filepath.Join(exploreDir, "inc")
+	dbg.Printf("creating %q", dstPath)
+	if err := dircopy.Copy(srcPath, dstPath); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil
@@ -516,6 +587,18 @@ func highlightC(llPath string, m *ir.Module, f *ir.Func, prim *primitive.Primiti
 	cHTMLPath := filepath.Join(exploreDir, cHTMLName)
 	dbg.Printf("creating %q", cHTMLPath)
 	if err := ioutil.WriteFile(cHTMLPath, htmlContent.Bytes(), 0644); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+// copyFile copies the source file to the destination path.
+func copyFile(srcPath, dstPath string) error {
+	buf, err := ioutil.ReadFile(srcPath)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	if err := ioutil.WriteFile(dstPath, buf, 0644); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil

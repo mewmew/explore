@@ -1,0 +1,52 @@
+{{- $root := . -}}
+<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			@import "inc/css/normalize.css";
+			@import "inc/css/pagination.css";
+			a {
+				text-decoration-line: none;
+			}
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol;
+			}
+		</style>
+		<meta charset="UTF-8">
+		<title>{{ .FuncName }} - overview of control flow analysis</title>
+	</head>
+	<body>
+		<div class="paginate-container">
+			<div class="pagination">
+				<a href="main_0001.html">«</a>
+				<!-- previous page -->
+{{- if ge .Prev 1 }}
+				<a href="main_{{ printf "%04d" .Prev }}.html" class="previous_page">Previous</a>
+{{- else }}
+				<span class="previous_page disabled">Previous</span>
+{{- end }}
+
+				<!-- page -->
+{{- range $i, $page := .Pages }}
+	{{- if eq $page $root.Step }}
+				<em class="current">{{ $page }}</em>
+	{{- else }}
+				<a href="main_{{ printf "%04d" $page }}.html">{{ $page }}</a>
+	{{- end }}
+{{- end }}
+
+				<!-- next page -->
+{{- if le .Next .NSteps }}
+				<a href="main_{{ printf "%04d" .Next }}.html" class="next_page">Next</a>
+{{- else }}
+				<span class="next_page disabled">Next</span>
+{{- end }}
+				<a href="main_{{ printf "%04d" .NSteps }}.html">»</a>
+			</div>
+		</div>
+		<iframe src="main_c_{{ printf "%04d" .Step }}.html" frameborder="0" width="23%" height="800px"></iframe>
+		<iframe src="main_llvm_{{ printf "%04d" .Step }}.html" frameborder="0" width="23%" height="800px"></iframe>
+		<iframe src="main_cfa_{{ printf "%04d" .Step }}.html" frameborder="0" width="23%" height="800px"></iframe>
+		<iframe src="main_go_{{ printf "%04d" .Step }}.html" frameborder="0" width="23%" height="800px"></iframe>
+	</body>
+</html>
