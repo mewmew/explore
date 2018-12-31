@@ -25,7 +25,6 @@
 {{- else }}
 				<span class="previous_page disabled">Previous</span>
 {{- end }}
-
 				<!-- page -->
 {{- range $i, $page := .Pages }}
 	{{- if eq $page $root.Step }}
@@ -34,7 +33,6 @@
 				<a href="main_{{ printf "%04d" $page }}.html">{{ $page }}</a>
 	{{- end }}
 {{- end }}
-
 				<!-- next page -->
 {{- if le .Next .NSteps }}
 				<a href="main_{{ printf "%04d" .Next }}.html" class="next_page">Next</a>

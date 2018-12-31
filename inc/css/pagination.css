@@ -42,7 +42,7 @@
 .pagination .selected{
     z-index:3
 }
-.pagination .current,.pagination .current:hover{
+.pagination .current,.pagination .current:hover,.pagination .current:focus{
     background-color:#0366d6;
     border-color:#0366d6;
     color:#fff;
