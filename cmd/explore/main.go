@@ -21,6 +21,9 @@
 //   -funcs string
 //         comma-separated list of functions to parse
 //   -q    suppress non-error messages
+//   -style string
+//         style used for syntax highlighting (borland, monokai, vs, ...)
+//         (default "monokai")
 package main
 
 import (
@@ -84,10 +87,13 @@ func main() {
 		funcs string
 		// quiet specifies whether to suppress non-error messages.
 		quiet bool
+		// style specifies the style used for syntax highlighting.
+		style string
 	)
 	flag.BoolVar(&force, "f", false, "force overwrite existing explore directories")
 	flag.StringVar(&funcs, "funcs", "", "comma-separated list of functions to parse")
 	flag.BoolVar(&quiet, "q", false, "suppress non-error messages")
+	flag.StringVar(&style, "style", "monokai", "style used for syntax highlighting (borland, monokai, vs, ...)")
 	flag.Usage = usage
 	flag.Parse()
 	var llPaths []string
@@ -134,7 +140,7 @@ func main() {
 			log.Fatalf("%+v", err)
 		}
 		// Generate HTML visualizations.
-		if err := explore(llPath, m, dotDir, htmlDir, funcNames); err != nil {
+		if err := explore(llPath, m, dotDir, htmlDir, funcNames, style); err != nil {
 			log.Fatalf("%+v", err)
 		}
 	}
@@ -149,7 +155,7 @@ func main() {
 // funcNames specifies the set of function names for which to generate
 // visualizations. When funcNames is emtpy, visualizations are generated for all
 // function definitions of the module.
-func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[string]bool) error {
+func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[string]bool, styleName string) error {
 	// Get functions set by `-funcs` or all functions if `-funcs` not used.
 	var funcs []*ir.Func
 	for _, f := range m.Funcs {
@@ -167,7 +173,7 @@ func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[
 			continue
 		}
 		// Generate visualization.
-		if err := genVisualization(llPath, m, f, dotDir, htmlDir); err != nil {
+		if err := genVisualization(llPath, m, f, dotDir, htmlDir, styleName); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -176,7 +182,7 @@ func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[
 
 // genVisualization generates a visualization of the control flow analysis
 // performed on the given function.
-func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir string) error {
+func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir, styleName string) error {
 	// Parse control flow primitives JSON file.
 	funcName := f.Name()
 	dbg.Printf("parsing primitives of function %q.", funcName)
@@ -204,13 +210,13 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir s
 		nsteps := len(prims)
 		if hasC {
 			// Generate C visualization.
-			if err := highlightC(llPath, f.Name(), prim, string(cSource), step, nsteps); err != nil {
+			if err := highlightC(llPath, f.Name(), prim, string(cSource), step, nsteps, styleName); err != nil {
 				return errors.WithStack(err)
 			}
 		}
 
 		// Generate Go visualization.
-		if err := highlightGo(llPath, f.Name(), step, nsteps); err != nil {
+		if err := highlightGo(llPath, f.Name(), step, nsteps, styleName); err != nil {
 			return errors.WithStack(err)
 		}
 
@@ -229,7 +235,7 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir s
 		if err := ioutil.WriteFile(htmlPath, htmlContent, 0644); err != nil {
 			return errors.WithStack(err)
 		}
-		if err := genLLVMHighlight(llPath, f, prim, step); err != nil {
+		if err := genLLVMHighlight(llPath, f, prim, step, styleName); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -269,15 +275,15 @@ func genStep(llPath string, f *ir.Func, prim *primitive.Primitive, step, nsteps 
 // step of the control flow analysis, highlighting the lines of the LLVM IR for
 // the corresponding basic blocks of the recovered high-level control flow
 // primitive.
-func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step int) error {
+func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step int, styleName string) error {
 	// Get Chroma LLVM IR lexer.
 	lexer := lexers.Get("llvm")
 	if lexer == nil {
 		lexer = lexers.Fallback
 	}
 	//lexer = chroma.Coalesce(lexer)
-	// Get Chrome Monokai style.
-	style := styles.Get("monokai")
+	// Get Chrome style.
+	style := styles.Get(styleName)
 	if style == nil {
 		style = styles.Fallback
 	}
@@ -557,7 +563,7 @@ func diLocation(node metadata.MDNode) (*metadata.DILocation, bool) {
 
 // highlightC outputs a highlighted C source file, highlighting the lines
 // associated with the basic block of the recovered control flow primitive.
-func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSource string, step, nsteps int) error {
+func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSource string, step, nsteps int, styleName string) error {
 	llDbgPath := pathutil.TrimExt(llPath) + "_dbg.ll"
 	m, err := asm.ParseFile(llDbgPath)
 	if err != nil {
@@ -573,8 +579,8 @@ func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSour
 		lexer = lexers.Fallback
 	}
 	//lexer = chroma.Coalesce(lexer)
-	// Get Chrome Monokai style.
-	style := styles.Get("monokai")
+	// Get Chrome style.
+	style := styles.Get(styleName)
 	if style == nil {
 		style = styles.Fallback
 	}
@@ -620,7 +626,7 @@ func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSour
 
 // highlightGo outputs a highlighted Go source file, highlighting the lines
 // associated with the recovered control flow primitive.
-func highlightGo(llPath string, funcName string, step, nsteps int) error {
+func highlightGo(llPath string, funcName string, step, nsteps int, styleName string) error {
 	dotDir := pathutil.TrimExt(llPath) + "_graphs"
 	prims, err := parsePrims(dotDir, funcName)
 	if err != nil {
@@ -643,8 +649,8 @@ func highlightGo(llPath string, funcName string, step, nsteps int) error {
 		lexer = lexers.Fallback
 	}
 	//lexer = chroma.Coalesce(lexer)
-	// Get Chrome Monokai style.
-	style := styles.Get("monokai")
+	// Get Chrome style.
+	style := styles.Get(styleName)
 	if style == nil {
 		style = styles.Fallback
 	}
