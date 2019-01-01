@@ -43,9 +43,19 @@
 				<a href="main_{{ printf "%04d" .NSteps }}.html">»</a>
 			</div>
 		</div>
-		<iframe src="main_c_{{ printf "%04d" .Step }}.html" frameborder="0" width="23%" height="800px"></iframe>
-		<iframe src="main_llvm_{{ printf "%04d" .Step }}.html" frameborder="0" width="23%" height="800px"></iframe>
-		<iframe src="main_cfa_{{ printf "%04d" .Step }}.html" frameborder="0" width="23%" height="800px"></iframe>
-		<iframe src="main_go_{{ printf "%04d" .Step }}.html" frameborder="0" width="23%" height="800px"></iframe>
+		<table style='width: 100%;'>
+			<tr>
+				<th>Original C source code</th>
+				<th>LLVM IR assembly</th>
+				<th>Control flow graph</th>
+				<th>Reconstructed Go source code</th>
+			</tr>
+			<tr>
+				<td><iframe src="main_c_{{ printf "%04d" .Step }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe src="main_llvm_{{ printf "%04d" .Step }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe src="main_cfa_{{ printf "%04d" .Step }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe src="main_go_{{ printf "%04d" .Step }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+			</tr>
+		</table>
 	</body>
 </html>

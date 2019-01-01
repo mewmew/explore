@@ -1,4 +1,4 @@
-// The explore tool visualizes the stages of a decompiler pipeline (*.ll ->
+// The explore tool visualizes the stages of the decompiler pipeline (*.ll ->
 // *.html).
 //
 // The input of explore is LLVM IR assembly and the output is a set of HTML
@@ -17,13 +17,13 @@
 //
 // Flags:
 //
-//   -f    force overwrite existing graph directories
+//   -f    force overwrite existing explore directories
 //   -funcs string
 //         comma-separated list of functions to parse
 //   -q    suppress non-error messages
 //   -style string
 //         style used for syntax highlighting (borland, monokai, vs, ...)
-//         (default "monokai")
+//         (default "vs")
 package main
 
 import (
@@ -65,7 +65,7 @@ var (
 
 func usage() {
 	const use = `
-Visualize the stages of a decompiler pipeline.
+Visualize the stages of the decompiler pipeline.
 
 Usage:
 
@@ -93,7 +93,7 @@ func main() {
 	flag.BoolVar(&force, "f", false, "force overwrite existing explore directories")
 	flag.StringVar(&funcs, "funcs", "", "comma-separated list of functions to parse")
 	flag.BoolVar(&quiet, "q", false, "suppress non-error messages")
-	flag.StringVar(&style, "style", "monokai", "style used for syntax highlighting (borland, monokai, vs, ...)")
+	flag.StringVar(&style, "style", "vs", "style used for syntax highlighting (borland, monokai, vs, ...)")
 	flag.Usage = usage
 	flag.Parse()
 	var llPaths []string
@@ -204,10 +204,18 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir, 
 	if err := copyStyles(llPath); err != nil {
 		return errors.WithStack(err)
 	}
+
+	// First overview.
+	nsteps := 1 + 2*len(prims)
+	if err := highlightGo(llPath, f.Name(), 1, styleName); err != nil {
+		return errors.WithStack(err)
+	}
+
+	// CFA steps.
+
 	// Output visualization of control flow analysis in HTML format.
 	for i, prim := range prims {
 		step := i + 1
-		nsteps := len(prims)
 		if hasC {
 			// Generate C visualization.
 			if err := highlightC(llPath, f.Name(), prim, string(cSource), step, nsteps, styleName); err != nil {
@@ -216,7 +224,7 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir, 
 		}
 
 		// Generate Go visualization.
-		if err := highlightGo(llPath, f.Name(), step, nsteps, styleName); err != nil {
+		if err := highlightGo(llPath, f.Name(), step, styleName); err != nil {
 			return errors.WithStack(err)
 		}
 
@@ -626,7 +634,7 @@ func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSour
 
 // highlightGo outputs a highlighted Go source file, highlighting the lines
 // associated with the recovered control flow primitive.
-func highlightGo(llPath string, funcName string, step, nsteps int, styleName string) error {
+func highlightGo(llPath string, funcName string, step int, styleName string) error {
 	dotDir := pathutil.TrimExt(llPath) + "_graphs"
 	prims, err := parsePrims(dotDir, funcName)
 	if err != nil {
