@@ -157,11 +157,6 @@ func (e *explorer) copyStyles() error {
 // outputChromaStyle outputs the Chroma CSS stylesheet to the inc/css
 // subdirectory of the visualization output directory.
 func (e *explorer) outputChromaStyle() error {
-	// Get Chrome style.
-	style := styles.Get(e.style)
-	if style == nil {
-		style = styles.Fallback
-	}
 	// Get Chroma HTML formatter.
 	formatter := html.New(
 		html.TabWidth(3),
@@ -169,16 +164,24 @@ func (e *explorer) outputChromaStyle() error {
 		html.WithClasses(),
 		html.LineNumbersInTable(),
 	)
-	// Output CSS Chroma stylesheet.
-	cssContent := &bytes.Buffer{}
-	if err := formatter.WriteCSS(cssContent, style); err != nil {
-		return errors.WithStack(err)
-	}
-	cssName := filepath.Base(fmt.Sprintf("chroma_%s.css", e.style))
-	cssPath := filepath.Join(e.outputDir, "inc/css", cssName)
-	dbg.Printf("creating %q", cssPath)
-	if err := ioutil.WriteFile(cssPath, cssContent.Bytes(), 0644); err != nil {
-		return errors.WithStack(err)
+	// Create CSS files for each Chroma style.
+	for _, styleName := range styles.Names() {
+		// Get Chrome style.
+		style := styles.Get(styleName)
+		if style == nil {
+			style = styles.Fallback
+		}
+		// Output CSS Chroma stylesheet.
+		cssContent := &bytes.Buffer{}
+		if err := formatter.WriteCSS(cssContent, style); err != nil {
+			return errors.WithStack(err)
+		}
+		cssName := filepath.Base(fmt.Sprintf("chroma_%s.css", styleName))
+		cssPath := filepath.Join(e.outputDir, "inc/css", cssName)
+		dbg.Printf("creating %q", cssPath)
+		if err := ioutil.WriteFile(cssPath, cssContent.Bytes(), 0644); err != nil {
+			return errors.WithStack(err)
+		}
 	}
 	return nil
 }
