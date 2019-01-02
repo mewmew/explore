@@ -1,10 +1,40 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+
+	"github.com/llir/llvm/asm"
 	"github.com/llir/llvm/ir"
-	"github.com/llir/llvm/ir/metadata"
+	"github.com/mewkiz/pkg/jsonutil"
+	"github.com/mewmew/lnp/pkg/cfa/primitive"
 	"github.com/pkg/errors"
 )
+
+// parseModule parses the given LLVM IR assembly file into an LLVM IR module.
+func parseModule(llPath string) (*ir.Module, error) {
+	switch llPath {
+	case "-":
+		// Parse LLVM IR module from standard input.
+		dbg.Printf("parsing standard input.")
+		return asm.Parse("stdin", os.Stdin)
+	default:
+		dbg.Printf("parsing file %q.", llPath)
+		return asm.ParseFile(llPath)
+	}
+}
+
+// parsePrims parses the recovered control flow primitives of the given
+// function.
+func (e *explorer) parsePrims(funcName string) ([]*primitive.Primitive, error) {
+	jsonName := funcName + ".json"
+	jsonPath := filepath.Join(e.dotDir, jsonName)
+	var prims []*primitive.Primitive
+	if err := jsonutil.ParseFile(jsonPath, &prims); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return prims, nil
+}
 
 // findFunc locates and returns the function with the specified name in the
 // given module.
@@ -26,13 +56,4 @@ func findBlock(f *ir.Func, blockName string) (*ir.Block, error) {
 		}
 	}
 	return nil, errors.Errorf("unable to locate basic block %q in function %q", blockName, f.Name())
-}
-
-// diLocation returns the DILocation specialized metadata node based on the
-// given MDNode. The boolean return value indicates success.
-func diLocation(node metadata.MDNode) (*metadata.DILocation, bool) {
-	if loc, ok := node.(*metadata.DILocation); ok {
-		return loc, true
-	}
-	return nil, false
 }

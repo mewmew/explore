@@ -8,7 +8,7 @@ all: $(GO_SRC) $(LL_SRC) $(LL_DBG_SRC)
 %.go: %.ll %_dbg.ll
 	ll2dot2 -f -img $<
 	restructure2 -steps -img -indent -o foo_graphs/main.json foo_graphs/main.dot
-	explore -f $<
+	explore -style monokai -f $<
 	ll2go2 -o $@ $<
 	#go-post $@
 	#sar -i "\n\n" "\n" $@

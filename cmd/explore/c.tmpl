@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>{{ .Func }} - original C source code</title>
+		<link rel="stylesheet" href="inc/css/normalize.css">
+		<link rel="stylesheet" href="inc/css/pagination.css">
+		<link rel="stylesheet" href="inc/css/style.css">
+		<link rel="stylesheet" href="inc/css/chroma_{{ .Style }}.css" id="chroma_style">
+		<script src="inc/js/style.js"></script>
+	</head>
+	<body onload="update_style(); update_style_selection();">
+		<select name="style" id="style_selection" onchange="select_style();">
+			<option value="abap" onclick="set_style('abap');">abap</option>
+			<option value="algol" onclick="set_style('algol');">algol</option>
+			<option value="algol_nu" onclick="set_style('algol_nu');">algol_nu</option>
+			<option value="arduino" onclick="set_style('arduino');">arduino</option>
+			<option value="autumn" onclick="set_style('autumn');">autumn</option>
+			<option value="borland" onclick="set_style('borland');">borland</option>
+			<option value="bw" onclick="set_style('bw');">bw</option>
+			<option value="colorful" onclick="set_style('colorful');">colorful</option>
+			<option value="dracula" onclick="set_style('dracula');">dracula</option>
+			<option value="emacs" onclick="set_style('emacs');">emacs</option>
+			<option value="friendly" onclick="set_style('friendly');">friendly</option>
+			<option value="fruity" onclick="set_style('fruity');">fruity</option>
+			<option value="github" onclick="set_style('github');">github</option>
+			<option value="igor" onclick="set_style('igor');">igor</option>
+			<option value="lovelace" onclick="set_style('lovelace');">lovelace</option>
+			<option value="manni" onclick="set_style('manni');">manni</option>
+			<option value="monokai" onclick="set_style('monokai');">monokai</option>
+			<option value="monokailight" onclick="set_style('monokailight');">monokailight</option>
+			<option value="murphy" onclick="set_style('murphy');">murphy</option>
+			<option value="native" onclick="set_style('native');">native</option>
+			<option value="paraiso-dark" onclick="set_style('paraiso-dark');">paraiso-dark</option>
+			<option value="paraiso-light" onclick="set_style('paraiso-light');">paraiso-light</option>
+			<option value="pastie" onclick="set_style('pastie');">pastie</option>
+			<option value="perldoc" onclick="set_style('perldoc');">perldoc</option>
+			<option value="pygments" onclick="set_style('pygments');">pygments</option>
+			<option value="rainbow_dash" onclick="set_style('rainbow_dash');">rainbow_dash</option>
+			<option value="solarized-dark" onclick="set_style('solarized-dark');">solarized-dark</option>
+			<option value="solarized-dark256" onclick="set_style('solarized-dark256');">solarized-dark256</option>
+			<option value="solarized-light" onclick="set_style('solarized-light');">solarized-light</option>
+			<option value="swapoff" onclick="set_style('swapoff');">swapoff</option>
+			<option value="tango" onclick="set_style('tango');">tango</option>
+			<option value="trac" onclick="set_style('trac');">trac</option>
+			<option value="vim" onclick="set_style('vim');">vim</option>
+			<option value="vs" onclick="set_style('vs');">vs</option>
+			<option value="xcode" onclick="set_style('xcode');">xcode</option>
+		</select>
+{{ .CCode }}
+	</body>
+</html>
+

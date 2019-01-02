@@ -3,13 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"path/filepath"
 
 	"github.com/alecthomas/chroma/formatters/html"
 	"github.com/alecthomas/chroma/lexers"
 	"github.com/alecthomas/chroma/styles"
-	"github.com/kr/pretty"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/metadata"
 	"github.com/mewkiz/pkg/osutil"
@@ -18,35 +18,55 @@ import (
 	"github.com/pkg/errors"
 )
 
-// outputC outputs the original C source file of the LLVM IR assembly,
-// highlighting the lines in the given function associated with the basic blocks
-// of the recovered control flow primitive.
-//
-// - funcName is the function name of the analyzed function.
-// - prim is the recovered control flow primitives; or nil if not present.
-// - page is the page number of the visualization.
-func (e *Explorer) outputC(funcName string, prim *primitive.Primitive, page int) error {
-	// Parse LLVM IR module (or parse debug module if present).
-	m, err := parseDebugModule(e.LLPath)
+// parseCTemplate parses the C HTML template.
+func (e *explorer) parseCTemplate() error {
+	tmplName := "c.tmpl"
+	tmplPath := filepath.Join(e.repoDir, "cmd/explore", tmplName)
+	ts, err := template.ParseFiles(tmplPath)
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	e.cTmpl = ts.Lookup(tmplName)
+	return nil
+}
+
+// parseC parses the original C source file.
+func (e *explorer) parseC() (string, error) {
 	// Locate original C source file.
-	cPath, ok := findCPath(e.LLPath, m)
+	m := e.m
+	if e.dbg != nil {
+		m = e.dbg
+	}
+	cPath, ok := findCPath(e.llPath, m)
 	if !ok {
 		// Early exit if original C source file is not present.
-		return nil
+		return "", nil
 	}
 	dbg.Printf("reading file %q", cPath)
 	buf, err := ioutil.ReadFile(cPath)
 	if err != nil {
-		return errors.WithStack(err)
+		return "", errors.WithStack(err)
 	}
 	cSource := string(buf)
+	return cSource, nil
+}
+
+// outputC outputs the original C source file of the LLVM IR assembly,
+// highlighting the lines in the given function associated with the basic blocks
+// of the recovered control flow primitive.
+//
+// - cSource is the contents of the original C source code.
+//
+// - funcName is the function name of the analyzed function.
+//
+// - prim is the recovered control flow primitives; or nil if not present.
+//
+// - page is the page number of the visualization.
+func (e *explorer) outputC(cSource, funcName string, prim *primitive.Primitive, page int) error {
 	// Locate lines to highlight of control flow primitive.
 	var lines [][2]int
 	if prim != nil {
-		f, err := findFunc(m, funcName)
+		f, err := findFunc(e.m, funcName)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -55,16 +75,19 @@ func (e *Explorer) outputC(funcName string, prim *primitive.Primitive, page int)
 			return errors.WithStack(err)
 		}
 	}
-	return e.outputCHTML(funcName, cSource, lines, page)
+	return e.outputCHTML(cSource, funcName, lines, page)
 }
 
 // outputCHTML outputs the C source code in HTML format, highlighting the specified lines.
 //
-// - funcName is the function name of the analyzed function.
 // - cSource is the contents of the original C source code.
+//
+// - funcName is the function name of the analyzed function.
+//
 // - lines is the list of lines to highlight.
+//
 // - page is the page number of the visualization.
-func (e *Explorer) outputCHTML(funcName, cSource string, lines [][2]int, page int) error {
+func (e *explorer) outputCHTML(cSource, funcName string, lines [][2]int, page int) error {
 	// Get Chroma C lexer.
 	lexer := lexers.Get("c")
 	if lexer == nil {
@@ -72,7 +95,7 @@ func (e *Explorer) outputCHTML(funcName, cSource string, lines [][2]int, page in
 	}
 	//lexer = chroma.Coalesce(lexer)
 	// Get Chrome style.
-	style := styles.Get(e.Style)
+	style := styles.Get(e.style)
 	if style == nil {
 		style = styles.Fallback
 	}
@@ -84,41 +107,32 @@ func (e *Explorer) outputCHTML(funcName, cSource string, lines [][2]int, page in
 		html.LineNumbersInTable(),
 		html.HighlightLines(lines),
 	)
-	// Write CSS.
-	htmlContent := &bytes.Buffer{}
-	htmlContent.WriteString("<!DOCTYPE html><html><head><style>")
-	if err := formatter.WriteCSS(htmlContent, style); err != nil {
-		return errors.WithStack(err)
-	}
+	// Generate syntax highlighted C code.
 	iterator, err := lexer.Tokenise(nil, cSource)
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	htmlContent.WriteString("</style></head><body>")
-	if err := formatter.Format(htmlContent, style, iterator); err != nil {
+	cCode := &bytes.Buffer{}
+	if err := formatter.Format(cCode, style, iterator); err != nil {
 		return errors.WithStack(err)
 	}
-	htmlContent.WriteString("</body></html>")
-
+	// Generate C HTML page.
+	htmlContent := &bytes.Buffer{}
+	data := map[string]interface{}{
+		"Func":  funcName,
+		"Style": e.style,
+		"CCode": template.HTML(cCode.String()),
+	}
+	if err := e.cTmpl.Execute(htmlContent, data); err != nil {
+		return errors.WithStack(err)
+	}
 	htmlName := fmt.Sprintf("%s_c_%04d.html", funcName, page)
-	htmlPath := filepath.Join(e.OutputDir, htmlName)
+	htmlPath := filepath.Join(e.outputDir, htmlName)
 	dbg.Printf("creating %q", htmlPath)
 	if err := ioutil.WriteFile(htmlPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil
-}
-
-// parseDebugModule parses the debug LLVM IR module of the given LLVM IR
-// assembly file, if present, and the regular LLVM IR module otherwise.
-//
-// Given "foo.ll", parse "foo_dbg.ll" if present, and "foo.ll" otherwise.
-func parseDebugModule(llPath string) (*ir.Module, error) {
-	llDbgPath := pathutil.TrimExt(llPath) + "_dbg.ll"
-	if osutil.Exists(llDbgPath) {
-		return parseModule(llDbgPath)
-	}
-	return parseModule(llPath)
 }
 
 // findCPath tries to locate the path of the original C source file used to
@@ -128,11 +142,11 @@ func parseDebugModule(llPath string) (*ir.Module, error) {
 // and lastly based on the LLVM IR assembly path.
 //
 // - llPath is the path to the LLVM IR assembly file.
+//
 // - m is the parsed LLVM IR module (or the parsed debug module if present).
 func findCPath(llPath string, m *ir.Module) (string, bool) {
 	if md, ok := m.NamedMetadataDefs["llvm.dbg.cu"]; ok {
 		unit := md.Nodes[0].(*metadata.DICompileUnit)
-		pretty.Println("unit:", unit.File)
 		cPath := filepath.Join(unit.File.Directory, unit.File.Filename)
 		return cPath, true
 	}
