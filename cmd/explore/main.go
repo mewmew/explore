@@ -43,10 +43,8 @@ import (
 	"github.com/alecthomas/chroma/styles"
 	"github.com/llir/llvm/asm"
 	"github.com/llir/llvm/ir"
-	"github.com/llir/llvm/ir/metadata"
 	"github.com/mewkiz/pkg/goutil"
 	"github.com/mewkiz/pkg/jsonutil"
-	"github.com/mewkiz/pkg/osutil"
 	"github.com/mewkiz/pkg/pathutil"
 	"github.com/mewkiz/pkg/term"
 	"github.com/mewmew/lnp/pkg/cfa/primitive"
@@ -135,12 +133,13 @@ func main() {
 			log.Fatalf("%+v", err)
 		}
 		// Create HTML visualization output directory.
-		htmlDir, err := createHTMLDir(llPath, force)
+		e := NewExplorer(llPath, style)
+		htmlDir, err := e.createHTMLDir(force)
 		if err != nil {
 			log.Fatalf("%+v", err)
 		}
 		// Generate HTML visualizations.
-		if err := explore(llPath, m, dotDir, htmlDir, funcNames, style); err != nil {
+		if err := e.explore(m, dotDir, htmlDir, funcNames); err != nil {
 			log.Fatalf("%+v", err)
 		}
 	}
@@ -155,7 +154,7 @@ func main() {
 // funcNames specifies the set of function names for which to generate
 // visualizations. When funcNames is emtpy, visualizations are generated for all
 // function definitions of the module.
-func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[string]bool, styleName string) error {
+func (e *Explorer) explore(m *ir.Module, dotDir, htmlDir string, funcNames map[string]bool) error {
 	// Get functions set by `-funcs` or all functions if `-funcs` not used.
 	var funcs []*ir.Func
 	for _, f := range m.Funcs {
@@ -173,7 +172,7 @@ func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[
 			continue
 		}
 		// Generate visualization.
-		if err := genVisualization(llPath, m, f, dotDir, htmlDir, styleName); err != nil {
+		if err := e.genVisualization(m, f, dotDir, htmlDir); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -182,7 +181,7 @@ func explore(llPath string, m *ir.Module, dotDir, htmlDir string, funcNames map[
 
 // genVisualization generates a visualization of the control flow analysis
 // performed on the given function.
-func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir, styleName string) error {
+func (e *Explorer) genVisualization(m *ir.Module, f *ir.Func, dotDir, htmlDir string) error {
 	// Parse control flow primitives JSON file.
 	funcName := f.Name()
 	dbg.Printf("parsing primitives of function %q.", funcName)
@@ -190,24 +189,15 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir, 
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	cPath := pathutil.TrimExt(llPath) + ".c"
-	hasC := osutil.Exists(cPath)
-	var cSource []byte
-	if hasC {
-		cSource, err = ioutil.ReadFile(cPath)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-	}
 
 	// Copy CSS include files.
-	if err := copyStyles(llPath); err != nil {
+	if err := e.copyStyles(); err != nil {
 		return errors.WithStack(err)
 	}
 
 	// First overview.
 	nsteps := 1 + 2*len(prims)
-	if err := highlightGo(llPath, f.Name(), 1, styleName); err != nil {
+	if err := e.highlightGo(f.Name(), 1); err != nil {
 		return errors.WithStack(err)
 	}
 
@@ -216,26 +206,24 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir, 
 	// Output visualization of control flow analysis in HTML format.
 	for i, prim := range prims {
 		step := i + 1
-		if hasC {
-			// Generate C visualization.
-			if err := highlightC(llPath, f.Name(), prim, string(cSource), step, nsteps, styleName); err != nil {
-				return errors.WithStack(err)
-			}
+		// Generate C visualization.
+		if err := e.outputC(f.Name(), prim, step); err != nil {
+			return errors.WithStack(err)
 		}
 
 		// Generate Go visualization.
-		if err := highlightGo(llPath, f.Name(), step, styleName); err != nil {
+		if err := e.highlightGo(f.Name(), step); err != nil {
 			return errors.WithStack(err)
 		}
 
 		// Generate overview.
-		if err := genOverview(llPath, funcName, step, nsteps); err != nil {
+		if err := e.genOverview(funcName, step, nsteps); err != nil {
 			return errors.WithStack(err)
 		}
 		// Generate control flow analysis visualization.
 		htmlName := fmt.Sprintf("%s_cfa_%04d.html", funcName, step)
 		htmlPath := filepath.Join(htmlDir, htmlName)
-		htmlContent, err := genStep(llPath, f, prim, step, nsteps)
+		htmlContent, err := e.genStep(f, prim, step, nsteps)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -243,7 +231,7 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir, 
 		if err := ioutil.WriteFile(htmlPath, htmlContent, 0644); err != nil {
 			return errors.WithStack(err)
 		}
-		if err := genLLVMHighlight(llPath, f, prim, step, styleName); err != nil {
+		if err := e.genLLVMHighlight(f, prim, step); err != nil {
 			return errors.WithStack(err)
 		}
 	}
@@ -253,8 +241,8 @@ func genVisualization(llPath string, m *ir.Module, f *ir.Func, dotDir, htmlDir, 
 // genStep generates a visualization in HTML format of the intermediate step of
 // the control flow analysis which recovered the control flow primitive of the
 // given function.
-func genStep(llPath string, f *ir.Func, prim *primitive.Primitive, step, nsteps int) ([]byte, error) {
-	llName := pathutil.FileName(llPath)
+func (e *Explorer) genStep(f *ir.Func, prim *primitive.Primitive, step, nsteps int) ([]byte, error) {
+	llName := pathutil.FileName(e.LLPath)
 	// TODO: embed cfa_step.tmpl in binary.
 	srcDir, err := goutil.SrcDir("github.com/mewmew/explore/cmd/explore")
 	if err != nil {
@@ -283,7 +271,7 @@ func genStep(llPath string, f *ir.Func, prim *primitive.Primitive, step, nsteps 
 // step of the control flow analysis, highlighting the lines of the LLVM IR for
 // the corresponding basic blocks of the recovered high-level control flow
 // primitive.
-func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step int, styleName string) error {
+func (e *Explorer) genLLVMHighlight(f *ir.Func, prim *primitive.Primitive, step int) error {
 	// Get Chroma LLVM IR lexer.
 	lexer := lexers.Get("llvm")
 	if lexer == nil {
@@ -291,7 +279,7 @@ func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step
 	}
 	//lexer = chroma.Coalesce(lexer)
 	// Get Chrome style.
-	style := styles.Get(styleName)
+	style := styles.Get(e.Style)
 	if style == nil {
 		style = styles.Fallback
 	}
@@ -330,9 +318,8 @@ func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step
 	}
 	htmlContent.WriteString("</body></html>")
 
-	exploreDir := pathutil.TrimExt(llPath) + "_explore"
 	llvmHTMLName := fmt.Sprintf("%s_llvm_%04d.html", f.Name(), step)
-	llvmHTMLPath := filepath.Join(exploreDir, llvmHTMLName)
+	llvmHTMLPath := filepath.Join(e.OutputDir, llvmHTMLName)
 	dbg.Printf("creating %q", llvmHTMLPath)
 	if err := ioutil.WriteFile(llvmHTMLPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
@@ -342,8 +329,8 @@ func genLLVMHighlight(llPath string, f *ir.Func, prim *primitive.Primitive, step
 
 // genOverview generates an overview in HTML of the intermediate step of the
 // decompilation.
-func genOverview(llPath, funcName string, step, nsteps int) error {
-	llName := pathutil.FileName(llPath)
+func (e *Explorer) genOverview(funcName string, step, nsteps int) error {
+	llName := pathutil.FileName(e.LLPath)
 	// TODO: embed step_overview.tmpl in binary.
 	srcDir, err := goutil.SrcDir("github.com/mewmew/explore/cmd/explore")
 	if err != nil {
@@ -373,9 +360,8 @@ func genOverview(llPath, funcName string, step, nsteps int) error {
 		return errors.WithStack(err)
 	}
 	// Store HTML file.
-	exploreDir := pathutil.TrimExt(llPath) + "_explore"
 	overviewHTMLName := fmt.Sprintf("%s_%04d.html", funcName, step)
-	overviewHTMLPath := filepath.Join(exploreDir, overviewHTMLName)
+	overviewHTMLPath := filepath.Join(e.OutputDir, overviewHTMLName)
 	dbg.Printf("creating %q", overviewHTMLPath)
 	if err := ioutil.WriteFile(overviewHTMLPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
@@ -384,15 +370,14 @@ func genOverview(llPath, funcName string, step, nsteps int) error {
 }
 
 // copyStyles copies the styles to the explore output directory.
-func copyStyles(llPath string) error {
+func (e *Explorer) copyStyles() error {
 	// Locate CSS files.
 	srcPath, err := goutil.SrcDir("github.com/mewmew/explore/inc")
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	// Copy CSS files.
-	exploreDir := pathutil.TrimExt(llPath) + "_explore"
-	dstPath := filepath.Join(exploreDir, "inc")
+	dstPath := filepath.Join(e.OutputDir, "inc")
 	dbg.Printf("creating %q", dstPath)
 	if err := dircopy.Copy(srcPath, dstPath); err != nil {
 		return errors.WithStack(err)
@@ -437,24 +422,17 @@ func getDOTDir(llPath string) (string, error) {
 // For a source file "foo.ll" the output directory "foo_explore/" is created. If
 // the `-force` flag is set, existing graph directories are overwritten by
 // force.
-func createHTMLDir(llPath string, force bool) (string, error) {
-	var dotDir string
-	switch llPath {
-	case "-":
-		dotDir = "stdin_explore"
-	default:
-		dotDir = pathutil.TrimExt(llPath) + "_explore"
-	}
+func (e *Explorer) createHTMLDir(force bool) (string, error) {
 	if force {
 		// Force overwrite existing graph directories.
-		if err := os.RemoveAll(dotDir); err != nil {
+		if err := os.RemoveAll(e.OutputDir); err != nil {
 			return "", errors.WithStack(err)
 		}
 	}
-	if err := os.Mkdir(dotDir, 0755); err != nil {
+	if err := os.Mkdir(e.OutputDir, 0755); err != nil {
 		return "", errors.WithStack(err)
 	}
-	return dotDir, nil
+	return e.OutputDir, nil
 }
 
 // parseModule parses the given LLVM IR assembly file into an LLVM IR module.
@@ -482,167 +460,17 @@ func parsePrims(dotDir, funcName string) ([]*primitive.Primitive, error) {
 	return prims, nil
 }
 
-// findBlock locates and returns the basic block with the specified name in the
-// given function.
-func findBlock(f *ir.Func, blockName string) (*ir.Block, error) {
-	for _, block := range f.Blocks {
-		if block.Name() == blockName {
-			return block, nil
-		}
-	}
-	return nil, errors.Errorf("unable to locate basic block %q in function %q", blockName, f.Name())
-}
-
-// findFunc locates and returns the function with the specified name in the
-// given module.
-func findFunc(m *ir.Module, funcName string) (*ir.Func, error) {
-	for _, f := range m.Funcs {
-		if f.Name() == funcName {
-			return f, nil
-		}
-	}
-	return nil, errors.Errorf("unable to locate function %q in module", funcName)
-}
-
-// highlightCRanges returns line ranges within the C source code to highlight the
-// lines associated with the basic block of the recovered control flow
-// primitive.
-func highlightCRanges(m *ir.Module, f *ir.Func, prim *primitive.Primitive) ([][2]int, error) {
-	var highlightRanges [][2]int
-	for _, blockName := range prim.Nodes {
-		block, err := findBlock(f, blockName)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		highlightRange := lineRangeOfBlockInC(m, block)
-		highlightRanges = append(highlightRanges, highlightRange...)
-	}
-	return highlightRanges, nil
-}
-
-type valueWithMetadata interface {
-	MDAttachments() []*metadata.Attachment
-}
-
-// lineRangeOfBlockInC returns the line range of the given block, as based on
-// the DILocation debug information of the instructions and terminator of that
-// block.
-func lineRangeOfBlockInC(m *ir.Module, block *ir.Block) [][2]int {
-	var ranges [][2]int
-	//var min, max int
-	var vals []valueWithMetadata
-	for _, inst := range block.Insts {
-		vals = append(vals, inst.(valueWithMetadata))
-	}
-	vals = append(vals, block.Term.(valueWithMetadata))
-	for _, val := range vals {
-		for _, md := range val.MDAttachments() {
-			if md.Name == "dbg" {
-				if loc, ok := diLocation(md.Node); ok {
-					line := int(loc.Line)
-					//if min == 0 || line < min {
-					//	min = line
-					//}
-					//if max == 0 || line > max {
-					//	max = line
-					//}
-					r := [2]int{line, line}
-					ranges = append(ranges, r)
-					//min = 0
-					//max = 0
-				}
-			}
-		}
-	}
-	return ranges
-}
-
-// diLocation returns the DILocation specialized metadata node based on the
-// given MDNode. The boolean return value indicates sucess.
-func diLocation(node metadata.MDNode) (*metadata.DILocation, bool) {
-	if n, ok := node.(*metadata.Def); ok {
-		node = n.Node
-	}
-	if loc, ok := node.(*metadata.DILocation); ok {
-		return loc, true
-	}
-	return nil, false
-}
-
-// highlightC outputs a highlighted C source file, highlighting the lines
-// associated with the basic block of the recovered control flow primitive.
-func highlightC(llPath string, funcName string, prim *primitive.Primitive, cSource string, step, nsteps int, styleName string) error {
-	llDbgPath := pathutil.TrimExt(llPath) + "_dbg.ll"
-	m, err := asm.ParseFile(llDbgPath)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	f, err := findFunc(m, funcName)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	// Get Chroma C lexer.
-	lexer := lexers.Get("c")
-	if lexer == nil {
-		lexer = lexers.Fallback
-	}
-	//lexer = chroma.Coalesce(lexer)
-	// Get Chrome style.
-	style := styles.Get(styleName)
-	if style == nil {
-		style = styles.Fallback
-	}
-	// Get Chroma HTML formatter.
-	// Line number ranges to highlight; 1-based line numbers, inclusive.
-	highlightRanges, err := highlightCRanges(m, f, prim)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	formatter := html.New(
-		html.TabWidth(3),
-		html.WithLineNumbers(),
-		html.WithClasses(),
-		html.LineNumbersInTable(),
-		html.HighlightLines(highlightRanges),
-	)
-
-	// Write CSS.
-	htmlContent := &bytes.Buffer{}
-	htmlContent.WriteString("<!DOCTYPE html><html><head><style>")
-	if err := formatter.WriteCSS(htmlContent, style); err != nil {
-		return errors.WithStack(err)
-	}
-	iterator, err := lexer.Tokenise(nil, cSource)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	htmlContent.WriteString("</style></head><body>")
-	if err := formatter.Format(htmlContent, style, iterator); err != nil {
-		return errors.WithStack(err)
-	}
-	htmlContent.WriteString("</body></html>")
-
-	exploreDir := pathutil.TrimExt(llPath) + "_explore"
-	cHTMLName := fmt.Sprintf("%s_c_%04d.html", f.Name(), step)
-	cHTMLPath := filepath.Join(exploreDir, cHTMLName)
-	dbg.Printf("creating %q", cHTMLPath)
-	if err := ioutil.WriteFile(cHTMLPath, htmlContent.Bytes(), 0644); err != nil {
-		return errors.WithStack(err)
-	}
-	return nil
-}
-
 // highlightGo outputs a highlighted Go source file, highlighting the lines
 // associated with the recovered control flow primitive.
-func highlightGo(llPath string, funcName string, step int, styleName string) error {
-	dotDir := pathutil.TrimExt(llPath) + "_graphs"
+func (e *Explorer) highlightGo(funcName string, step int) error {
+	dotDir := pathutil.TrimExt(e.LLPath) + "_graphs"
 	prims, err := parsePrims(dotDir, funcName)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 	// TODO: add before and after stage; i.e. step_0001a and step_0001b.
 	prims = prims[:step]
-	goSource, err := decompGo(llPath, funcName, prims)
+	goSource, err := e.decompGo(funcName, prims)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -658,7 +486,7 @@ func highlightGo(llPath string, funcName string, step int, styleName string) err
 	}
 	//lexer = chroma.Coalesce(lexer)
 	// Get Chrome style.
-	style := styles.Get(styleName)
+	style := styles.Get(e.Style)
 	if style == nil {
 		style = styles.Fallback
 	}
@@ -687,11 +515,10 @@ func highlightGo(llPath string, funcName string, step int, styleName string) err
 	}
 	htmlContent.WriteString("</body></html>")
 
-	exploreDir := pathutil.TrimExt(llPath) + "_explore"
-	goHTMLName := fmt.Sprintf("%s_go_%04d.html", funcName, step)
-	goHTMLPath := filepath.Join(exploreDir, goHTMLName)
-	dbg.Printf("creating %q", goHTMLPath)
-	if err := ioutil.WriteFile(goHTMLPath, htmlContent.Bytes(), 0644); err != nil {
+	htmlName := fmt.Sprintf("%s_go_%04d.html", funcName, step)
+	htmlPath := filepath.Join(e.OutputDir, htmlName)
+	dbg.Printf("creating %q", htmlPath)
+	if err := ioutil.WriteFile(htmlPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
 	}
 	return nil
@@ -699,17 +526,17 @@ func highlightGo(llPath string, funcName string, step int, styleName string) err
 
 // decompGo decompiles the LLVM IR module into Go source code, based on the
 // given recovered control flow primitives.
-func decompGo(llPath, funcName string, prims []*primitive.Primitive) (string, error) {
+func (e *Explorer) decompGo(funcName string, prims []*primitive.Primitive) (string, error) {
 	tmpDir, err := ioutil.TempDir("", "decomp-")
 	if err != nil {
 		return "", errors.WithStack(err)
 	}
-	newLLPath := filepath.Join(tmpDir, filepath.Base(llPath))
-	if err := dircopy.Copy(llPath, newLLPath); err != nil {
+	newLLPath := filepath.Join(tmpDir, filepath.Base(e.LLPath))
+	if err := dircopy.Copy(e.LLPath, newLLPath); err != nil {
 		return "", errors.WithStack(err)
 	}
 	fmt.Println("tmpDir:", tmpDir)
-	dotDir := filepath.Join(tmpDir, fmt.Sprintf("%s_graphs", pathutil.FileName(llPath)))
+	dotDir := filepath.Join(tmpDir, fmt.Sprintf("%s_graphs", pathutil.FileName(e.LLPath)))
 	if err := os.MkdirAll(dotDir, 0755); err != nil {
 		return "", errors.WithStack(err)
 	}
