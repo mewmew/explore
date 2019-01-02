@@ -21,10 +21,30 @@ function update_style() {
 	var style = get_style();
 	if (style !== null) {
 		var cssName = "chroma_" + style + ".css";
-		var elem = document.getElementById("chroma_style");
-		var cssPath = get_dir(elem.href) + "/" + cssName;
-		elem.href = cssPath;
+		var elems = find_elems("chroma_style");
+		for (i = 0; i < elems.length; i++) {
+			var elem = elems[i];
+			var cssPath = get_dir(elem.href) + "/" + cssName;
+			elem.href = cssPath;
+		}
 	}
+}
+
+// find_elems returns the elements of the given ID in the current document and
+// all iframes.
+function find_elems(id) {
+	var elems = [];
+	var elem = document.getElementById(id);
+	if (elem !== null) {
+		elems.push(elem);
+	}
+	for (i = 0; i < frames.length; i++) {
+		var elem = frames[i].document.getElementById(id);
+		if (elem !== null) {
+			elems.push(elem);
+		}
+	}
+	return elems;
 }
 
 // update_style_selection updates the selected style to match the active one.
@@ -33,7 +53,7 @@ function update_style_selection() {
 	if (style !== null) {
 		var elem = document.getElementById("style_selection");
 		for (i = 0; i < elem.options.length; i++) {
-		option = elem.options[i];
+			var option = elem.options[i];
 			if (option.value == style) {
 				option.selected = true;
 			}

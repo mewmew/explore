@@ -119,10 +119,10 @@ func (e *explorer) outputCHTML(cSource, funcName string, lines [][2]int, page in
 	// Generate C HTML page.
 	htmlContent := &bytes.Buffer{}
 	data := map[string]interface{}{
-		"Func":   funcName,
-		"Style":  e.style,
-		"Styles": styles.Names(),
-		"CCode":  template.HTML(cCode.String()),
+		"FuncName": funcName,
+		"Style":    e.style,
+		"Styles":   styles.Names(),
+		"CCode":    template.HTML(cCode.String()),
 	}
 	if err := e.cTmpl.Execute(htmlContent, data); err != nil {
 		return errors.WithStack(err)

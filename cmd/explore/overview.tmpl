@@ -2,43 +2,49 @@
 <!DOCTYPE html>
 <html>
 	<head>
-		<!--@import "inc/css/dark.css";-->
-		<style>
-			@import "inc/css/normalize.css";
-			@import "inc/css/pagination.css";
-			@import "inc/css/style.css";
-		</style>
-		<meta charset="UTF-8">
+		<meta charset="utf-8">
 		<title>{{ .FuncName }} - overview of control flow analysis</title>
+		<link rel="stylesheet" href="inc/css/normalize.css">
+		<link rel="stylesheet" href="inc/css/pagination.css">
+		<link rel="stylesheet" href="inc/css/style.css">
+		<link rel="stylesheet" href="inc/css/chroma_{{ .Style }}.css" id="chroma_style">
+		<script src="inc/js/style.js"></script>
 	</head>
-	<body>
+	<body onload="update_style_selection();">
+		<!-- Pagination -->
 		<div class="paginate-container">
 			<div class="pagination">
-				<a href="main_0001.html">«</a>
-				<!-- previous page -->
-{{- if ge .Prev 1 }}
-				<a href="main_{{ printf "%04d" .Prev }}.html" class="previous_page">Previous</a>
+				<a href="{{ .FuncName }}_0001.html">«</a>
+				<!-- Previous page -->
+{{- if ge .PrevPage 1 }}
+				<a href="{{ .FuncName }}_{{ printf "%04d" .PrevPage }}.html" class="previous_page">Previous</a>
 {{- else }}
 				<span class="previous_page disabled">Previous</span>
 {{- end }}
-				<!-- page -->
+				<!-- Pages -->
 {{- range $i, $page := .Pages }}
-	{{- if eq $page $root.Step }}
+	{{- if eq $page $root.CurPage }}
 				<em class="current">{{ $page }}</em>
 	{{- else }}
-				<a href="main_{{ printf "%04d" $page }}.html">{{ $page }}</a>
+				<a href="{{ $root.FuncName }}_{{ printf "%04d" $page }}.html">{{ $page }}</a>
 	{{- end }}
 {{- end }}
-				<!-- next page -->
-{{- if le .Next .NSteps }}
-				<a href="main_{{ printf "%04d" .Next }}.html" class="next_page">Next</a>
+				<!-- Next page -->
+{{- if le .NextPage .NPages }}
+				<a href="{{ .FuncName }}_{{ printf "%04d" .NextPage }}.html" class="next_page">Next</a>
 {{- else }}
 				<span class="next_page disabled">Next</span>
 {{- end }}
-				<a href="main_{{ printf "%04d" .NSteps }}.html">»</a>
+				<a href="{{ .FuncName }}_{{ printf "%04d" .NPages }}.html">»</a>
 			</div>
+			<!-- Style selection -->
+			<select id="style_selection" onchange="select_style();">
+	{{- range $i, $style := .Styles }}
+				<option value="{{ $style }}" onclick="set_style('{{ $style }}');" {{- if eq $style $root.Style }} selected {{- end }}>{{ $style }}</option>
+	{{- end }}
+			</select>
 		</div>
-		<table style='width: 100%;'>
+		<table style="width: 100%;">
 			<tr>
 				<th>Original C source code</th>
 				<th>LLVM IR assembly</th>
@@ -46,10 +52,10 @@
 				<th>Reconstructed Go source code</th>
 			</tr>
 			<tr>
-				<td><iframe src="main_c_{{ printf "%04d" .Step }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe src="main_llvm_{{ printf "%04d" .Step }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe src="main_cfa_{{ printf "%04d" .Step }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe src="main_go_{{ printf "%04d" .Step }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe id="frame_c" src="{{ .FuncName }}_c_{{ printf "%04d" .CurPage }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe id="frame_llvm" src="{{ .FuncName }}_llvm_{{ printf "%04d" .CurPage }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe id="frame_cfa" src="{{ .FuncName }}_cfa_{{ printf "%04d" .CurPage }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe id="frame_go" src="{{ .FuncName }}_go_{{ printf "%04d" .CurPage }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
 			</tr>
 		</table>
 	</body>

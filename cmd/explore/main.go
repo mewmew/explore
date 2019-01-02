@@ -195,17 +195,24 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	// First overview.
-	npages := 1 + 2*len(prims)
-	_ = npages
-
-	// Output original C source code.
+	// Parse original C source code.
 	cSource, err := e.parseC()
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	if err := e.outputC(cSource, funcName, nil, 1); err != nil {
-		return errors.WithStack(err)
+	hasC := len(cSource) > 0
+	npages := 1 + 2*len(prims)
+	for page := 1; page <= npages; page++ {
+		// Overview.
+		if err := e.outputOverview(funcName, page, npages); err != nil {
+			return errors.WithStack(err)
+		}
+		// Output original C source code.
+		if hasC {
+			if err := e.outputC(cSource, funcName, nil, page); err != nil {
+				return errors.WithStack(err)
+			}
+		}
 	}
 
 	// LLVM IR assembly.
