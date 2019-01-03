@@ -31,14 +31,17 @@ func (e *explorer) parseOverviewTemplate() error {
 // - page is the page number of the visualization.
 //
 // - npages is the total number of pages.
-func (e *explorer) outputOverview(funcName string, page, npages, step int) error {
+//
+// - subStep specifies whether the intermediate step is before or after merge,
+//   where "a" specifies before and "b" after (using lexicographic naming to
+//   have files be listed in the logical order).
+func (e *explorer) outputOverview(funcName string, page, npages, step int, subStep string) error {
 	// Generate Overview HTML page.
 	htmlContent := &bytes.Buffer{}
 	var pages []int
 	for i := 1; i <= npages; i++ {
 		pages = append(pages, i)
 	}
-	subStep := subStepFromPage(page)
 	data := map[string]interface{}{
 		"FuncName": funcName,
 		"Style":    e.style,

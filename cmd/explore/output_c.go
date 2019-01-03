@@ -82,8 +82,8 @@ func (e *explorer) outputC(cSource, funcName string, prim *primitive.Primitive, 
 	return e.outputCHTML(cSource, funcName, lines, step)
 }
 
-// outputCHTML outputs the C source code in HTML format, highlighting the
-// specified lines.
+// outputCHTML outputs the original C source code in HTML format, highlighting
+// the specified lines.
 //
 // - cSource is the contents of the original C source code.
 //

@@ -27,26 +27,18 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 
-	"github.com/alecthomas/chroma/formatters/html"
-	"github.com/alecthomas/chroma/lexers"
-	"github.com/alecthomas/chroma/styles"
 	"github.com/llir/llvm/ir"
-	"github.com/mewkiz/pkg/jsonutil"
 	"github.com/mewkiz/pkg/osutil"
 	"github.com/mewkiz/pkg/pathutil"
 	"github.com/mewkiz/pkg/term"
 	"github.com/mewmew/lnp/pkg/cfa/primitive"
-	dircopy "github.com/otiai10/copy"
 	"github.com/pkg/errors"
 )
 
@@ -210,16 +202,18 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 		//    page 5: step 2b
 		//    ...
 		step := page / 2
-		if err := e.outputOverview(funcName, page, npages, step); err != nil {
+		subStep := subStepFromPage(page)
+		if err := e.outputOverview(funcName, page, npages, step, subStep); err != nil {
 			return errors.WithStack(err)
 		}
 		// Output control flow analysis.
-		subStep := subStepFromPage(page)
 		if err := e.outputCFA(funcName, step, subStep); err != nil {
 			return errors.WithStack(err)
 		}
 		// Output reconstructed Go source code.
-		// TODO: output Go.
+		if err := e.outputGo(funcName, prims, step, subStep); err != nil {
+			return errors.WithStack(err)
+		}
 	}
 	nsteps := len(prims)
 	for step := 0; step <= nsteps; step++ {
@@ -240,125 +234,5 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 			return errors.WithStack(err)
 		}
 	}
-
-	/*
-		for i, prim := range prims {
-			step := i + 1
-			// Generate Go visualization.
-			if err := e.highlightGo(f.Name(), step); err != nil {
-				return errors.WithStack(err)
-			}
-			// Generate control flow analysis visualization.
-			htmlName := fmt.Sprintf("%s_cfa_%04d.html", funcName, step)
-			htmlPath := filepath.Join(htmlDir, htmlName)
-			htmlContent, err := e.genStep(f, prim, step, nsteps)
-			if err != nil {
-				return errors.WithStack(err)
-			}
-			dbg.Printf("creating file %q", htmlPath)
-			if err := ioutil.WriteFile(htmlPath, htmlContent, 0644); err != nil {
-				return errors.WithStack(err)
-			}
-		}
-	*/
 	return nil
-}
-
-// highlightGo outputs a highlighted Go source file, highlighting the lines
-// associated with the recovered control flow primitive.
-func (e *explorer) highlightGo(funcName string, step int) error {
-	prims, err := e.parsePrims(funcName)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	// TODO: add before and after stage; i.e. step_0001a and step_0001b.
-	prims = prims[:step]
-	goSource, err := e.decompGo(funcName, prims)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	//buf, err := ioutil.ReadFile(goPath)
-	//if err != nil {
-	//	return errors.WithStack(err)
-	//}
-	//goSource := string(buf)
-	//// Get Chroma C lexer.
-	lexer := lexers.Get("go")
-	if lexer == nil {
-		lexer = lexers.Fallback
-	}
-	//lexer = chroma.Coalesce(lexer)
-	// Get Chrome style.
-	style := styles.Get(e.style)
-	if style == nil {
-		style = styles.Fallback
-	}
-	// Get Chroma HTML formatter.
-	formatter := html.New(
-		html.TabWidth(3),
-		html.WithLineNumbers(),
-		html.WithClasses(),
-		html.LineNumbersInTable(),
-		//html.HighlightLines(highlightRanges),
-	)
-
-	// Write CSS.
-	htmlContent := &bytes.Buffer{}
-	htmlContent.WriteString("<!DOCTYPE html><html><head><style>")
-	if err := formatter.WriteCSS(htmlContent, style); err != nil {
-		return errors.WithStack(err)
-	}
-	iterator, err := lexer.Tokenise(nil, goSource)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	htmlContent.WriteString("</style></head><body>")
-	if err := formatter.Format(htmlContent, style, iterator); err != nil {
-		return errors.WithStack(err)
-	}
-	htmlContent.WriteString("</body></html>")
-
-	htmlName := fmt.Sprintf("%s_go_%04d.html", funcName, step)
-	htmlPath := filepath.Join(e.outputDir, htmlName)
-	dbg.Printf("creating file %q", htmlPath)
-	if err := ioutil.WriteFile(htmlPath, htmlContent.Bytes(), 0644); err != nil {
-		return errors.WithStack(err)
-	}
-	return nil
-}
-
-// decompGo decompiles the LLVM IR module into Go source code, based on the
-// given recovered control flow primitives.
-func (e *explorer) decompGo(funcName string, prims []*primitive.Primitive) (string, error) {
-	tmpDir, err := ioutil.TempDir("", "decomp-")
-	if err != nil {
-		return "", errors.WithStack(err)
-	}
-	newLLPath := filepath.Join(tmpDir, filepath.Base(e.llPath))
-	if err := dircopy.Copy(e.llPath, newLLPath); err != nil {
-		return "", errors.WithStack(err)
-	}
-	fmt.Println("tmpDir:", tmpDir)
-	dotDir := filepath.Join(tmpDir, fmt.Sprintf("%s_graphs", pathutil.FileName(e.llPath)))
-	if err := os.MkdirAll(dotDir, 0755); err != nil {
-		return "", errors.WithStack(err)
-	}
-	fmt.Println("dotDir:", dotDir)
-	jsonPath := filepath.Join(dotDir, fmt.Sprintf("%s.json", funcName))
-	if err := jsonutil.WriteFile(jsonPath, prims); err != nil {
-		return "", errors.WithStack(err)
-	}
-	fmt.Println("jsonPath:", jsonPath)
-	funcs := funcName
-	cmd := exec.Command("ll2go2", "-funcs", funcs, newLLPath)
-	buf := &bytes.Buffer{}
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = buf
-	cmd.Stderr = os.Stderr
-	cmd.Dir = tmpDir
-	if err := cmd.Run(); err != nil {
-		return "", errors.WithStack(err)
-	}
-	fmt.Println(buf.String())
-	return buf.String(), nil
 }
