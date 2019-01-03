@@ -38,15 +38,7 @@ func (e *explorer) outputOverview(funcName string, page, npages, step int) error
 	for i := 1; i <= npages; i++ {
 		pages = append(pages, i)
 	}
-	var subStep string
-	switch {
-	case page == 1:
-		subStep = ""
-	case page%2 == 0:
-		subStep = "a"
-	default:
-		subStep = "b"
-	}
+	subStep := subStepFromPage(page)
 	data := map[string]interface{}{
 		"FuncName": funcName,
 		"Style":    e.style,

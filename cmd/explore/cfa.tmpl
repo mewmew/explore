@@ -1,9 +1,12 @@
 <!DOCTYPE html>
 <html>
 	<head>
-		<title>Step {{ .Step }}/{{ .NSteps }} of {{ .FuncName }} - visualization of control flow analysis</title>
+		<meta charset="utf-8">
+		<title>{{ .FuncName }} - control flow analysis</title>
+		<link rel="stylesheet" href="inc/css/normalize.css">
+		<link rel="stylesheet" href="inc/css/style.css">
 	</head>
 	<body>
-		<img src="../{{ .LLName }}_graphs/{{ .FuncName }}_{{ printf "%04da" .Step }}.png" alt="Control flow graph of {{ .FuncName }}, before merge of step {{ .Step }}.">
+		<img src="img/{{ .FuncName }}_step_{{ printf "%04d" .Step }}{{ .SubStep }}.png" title="{{ .Desc }}" alt="{{ .Desc }}" class="center">
 	</body>
 </html>

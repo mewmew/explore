@@ -30,7 +30,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"log"
 	"os"
@@ -42,7 +41,6 @@ import (
 	"github.com/alecthomas/chroma/lexers"
 	"github.com/alecthomas/chroma/styles"
 	"github.com/llir/llvm/ir"
-	"github.com/mewkiz/pkg/goutil"
 	"github.com/mewkiz/pkg/jsonutil"
 	"github.com/mewkiz/pkg/osutil"
 	"github.com/mewkiz/pkg/pathutil"
@@ -215,6 +213,13 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 		if err := e.outputOverview(funcName, page, npages, step); err != nil {
 			return errors.WithStack(err)
 		}
+		// Output control flow analysis.
+		subStep := subStepFromPage(page)
+		if err := e.outputCFA(funcName, step, subStep); err != nil {
+			return errors.WithStack(err)
+		}
+		// Output reconstructed Go source code.
+		// TODO: output Go.
 	}
 	nsteps := len(prims)
 	for step := 0; step <= nsteps; step++ {
@@ -230,44 +235,17 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 				return errors.WithStack(err)
 			}
 		}
-		// Output original LLVM IR assembly.
+		// Output LLVM IR assembly.
 		if err := e.outputLLVM(funcName, prim, step); err != nil {
 			return errors.WithStack(err)
 		}
 	}
 
-	// LLVM IR assembly.
-	// TODO: output LLVM IR.
-
-	// Control flow graph.
-	// TODO: output CFG.
-
-	// Reconstructed Go source code.
-	// TODO: output Go.
-
-	// First overview.
-	//if err := e.highlightGo(f.Name(), 1); err != nil {
-	//	return errors.WithStack(err)
-	//}
-
-	// CFA steps.
-
-	// Output visualization of control flow analysis in HTML format.
 	/*
 		for i, prim := range prims {
 			step := i + 1
-			// Generate C visualization.
-			if err := e.outputC(f.Name(), prim, step); err != nil {
-				return errors.WithStack(err)
-			}
-
 			// Generate Go visualization.
 			if err := e.highlightGo(f.Name(), step); err != nil {
-				return errors.WithStack(err)
-			}
-
-			// Generate overview.
-			if err := e.genOverview(funcName, step, nsteps); err != nil {
 				return errors.WithStack(err)
 			}
 			// Generate control flow analysis visualization.
@@ -281,78 +259,8 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 			if err := ioutil.WriteFile(htmlPath, htmlContent, 0644); err != nil {
 				return errors.WithStack(err)
 			}
-			if err := e.genLLVMHighlight(f, prim, step); err != nil {
-				return errors.WithStack(err)
-			}
 		}
 	*/
-	return nil
-}
-
-// genStep generates a visualization in HTML format of the intermediate step of
-// the control flow analysis which recovered the control flow primitive of the
-// given function.
-func (e *explorer) genStep(f *ir.Func, prim *primitive.Primitive, step, nsteps int) ([]byte, error) {
-	llName := pathutil.FileName(e.llPath)
-	// TODO: embed cfa_step.tmpl in binary.
-	srcDir, err := goutil.SrcDir("github.com/mewmew/explore/cmd/explore")
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	tmplPath := filepath.Join(srcDir, "cfa_step.tmpl")
-	ts, err := template.ParseFiles(tmplPath)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	t := ts.Lookup("cfa_step.tmpl")
-	buf := &bytes.Buffer{}
-	data := map[string]interface{}{
-		"Step":     step,
-		"NSteps":   nsteps,
-		"FuncName": f.Name(),
-		"LLName":   llName,
-	}
-	if err := t.Execute(buf, data); err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return buf.Bytes(), nil
-}
-
-// genOverview generates an overview in HTML of the intermediate step of the
-// decompilation.
-func (e *explorer) genOverview(funcName string, step, nsteps int) error {
-	llName := pathutil.FileName(e.llPath)
-	// TODO: embed step_overview.tmpl in binary.
-	tmplPath := filepath.Join(e.repoDir, "step_overview.tmpl")
-	ts, err := template.ParseFiles(tmplPath)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	t := ts.Lookup("step_overview.tmpl")
-	htmlContent := &bytes.Buffer{}
-	var pages []int
-	for page := 1; page <= nsteps; page++ {
-		pages = append(pages, page)
-	}
-	data := map[string]interface{}{
-		"Pages":    pages,
-		"Step":     step,
-		"Prev":     step - 1,
-		"Next":     step + 1,
-		"NSteps":   nsteps,
-		"FuncName": funcName,
-		"LLName":   llName,
-	}
-	if err := t.Execute(htmlContent, data); err != nil {
-		return errors.WithStack(err)
-	}
-	// Store HTML file.
-	overviewHTMLName := fmt.Sprintf("%s_%04d.html", funcName, step)
-	overviewHTMLPath := filepath.Join(e.outputDir, overviewHTMLName)
-	dbg.Printf("creating file %q", overviewHTMLPath)
-	if err := ioutil.WriteFile(overviewHTMLPath, htmlContent.Bytes(), 0644); err != nil {
-		return errors.WithStack(err)
-	}
 	return nil
 }
 
@@ -453,16 +361,4 @@ func (e *explorer) decompGo(funcName string, prims []*primitive.Primitive) (stri
 	}
 	fmt.Println(buf.String())
 	return buf.String(), nil
-}
-
-// copyFile copies the source file to the destination path.
-func copyFile(srcPath, dstPath string) error {
-	buf, err := ioutil.ReadFile(srcPath)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if err := ioutil.WriteFile(dstPath, buf, 0644); err != nil {
-		return errors.WithStack(err)
-	}
-	return nil
 }

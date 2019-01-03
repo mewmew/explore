@@ -57,3 +57,22 @@ func findBlock(f *ir.Func, blockName string) (*ir.Block, error) {
 	}
 	return nil, errors.Errorf("unable to locate basic block %q in function %q", blockName, f.Name())
 }
+
+// subStepFromPage returns the intermediate substep corresponding to the given
+// visualization page.
+func subStepFromPage(page int) string {
+	//    page 1: step 0
+	//    page 2: step 1a
+	//    page 3: step 1b
+	//    page 4: step 2a
+	//    page 5: step 2b
+	//    ...
+	switch {
+	case page == 1:
+		return ""
+	case page%2 == 0:
+		return "a"
+	default:
+		return "b"
+	}
+}
