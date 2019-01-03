@@ -31,12 +31,21 @@ func (e *explorer) parseOverviewTemplate() error {
 // - page is the page number of the visualization.
 //
 // - npages is the total number of pages.
-func (e *explorer) outputOverview(funcName string, page, npages int) error {
+func (e *explorer) outputOverview(funcName string, page, npages, step int) error {
 	// Generate Overview HTML page.
 	htmlContent := &bytes.Buffer{}
 	var pages []int
 	for i := 1; i <= npages; i++ {
 		pages = append(pages, i)
+	}
+	var subStep string
+	switch {
+	case page == 1:
+		subStep = ""
+	case page%2 == 0:
+		subStep = "a"
+	default:
+		subStep = "b"
 	}
 	data := map[string]interface{}{
 		"FuncName": funcName,
@@ -47,6 +56,8 @@ func (e *explorer) outputOverview(funcName string, page, npages int) error {
 		"CurPage":  page,
 		"NextPage": page + 1,
 		"NPages":   npages,
+		"Step":     step,
+		"SubStep":  subStep,
 	}
 	if err := e.overviewTmpl.Execute(htmlContent, data); err != nil {
 		return errors.WithStack(err)

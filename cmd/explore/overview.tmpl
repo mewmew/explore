@@ -52,10 +52,10 @@
 				<th>Reconstructed Go source code</th>
 			</tr>
 			<tr>
-				<td><iframe id="frame_c" src="{{ .FuncName }}_c_{{ printf "%04d" .CurPage }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe id="frame_llvm" src="{{ .FuncName }}_llvm_{{ printf "%04d" .CurPage }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe id="frame_cfa" src="{{ .FuncName }}_cfa_{{ printf "%04d" .CurPage }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe id="frame_go" src="{{ .FuncName }}_go_{{ printf "%04d" .CurPage }}.html" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}_c.html" id="frame_c" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}_llvm.html" id="frame_llvm" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}{{ .SubStep }}_cfa.html" id="frame_cfa" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}{{ .SubStep }}_go.html" id="frame_go" frameborder="0" width="100%" height="800px"></iframe></td>
 			</tr>
 		</table>
 	</body>

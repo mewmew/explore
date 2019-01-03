@@ -204,19 +204,20 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 	npages := 1 + 2*len(prims)
 	for page := 1; page <= npages; page++ {
 		// Overview.
-		if err := e.outputOverview(funcName, page, npages); err != nil {
+		step := page / 2
+		if err := e.outputOverview(funcName, page, npages, step); err != nil {
 			return errors.WithStack(err)
 		}
+	}
+	nsteps := len(prims)
+	for step := 0; step <= nsteps; step++ {
 		// Output original C source code.
 		if hasC {
 			var prim *primitive.Primitive
-			if page > 1 {
-				step := (page - 2) / 2
-				fmt.Println("page:", page)
-				fmt.Println("step:", step)
-				prim = prims[step]
+			if step > 0 {
+				prim = prims[step-1]
 			}
-			if err := e.outputC(cSource, funcName, prim, page); err != nil {
+			if err := e.outputC(cSource, funcName, prim, step); err != nil {
 				return errors.WithStack(err)
 			}
 		}

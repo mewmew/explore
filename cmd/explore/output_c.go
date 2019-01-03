@@ -61,8 +61,8 @@ func (e *explorer) parseC() (string, error) {
 //
 // - prim is the recovered control flow primitives; or nil if not present.
 //
-// - page is the page number of the visualization.
-func (e *explorer) outputC(cSource, funcName string, prim *primitive.Primitive, page int) error {
+// - step is the intermediate step of the control flow analysis.
+func (e *explorer) outputC(cSource, funcName string, prim *primitive.Primitive, step int) error {
 	// Locate lines to highlight of control flow primitive.
 	var lines [][2]int
 	m := e.m
@@ -79,7 +79,7 @@ func (e *explorer) outputC(cSource, funcName string, prim *primitive.Primitive, 
 			return errors.WithStack(err)
 		}
 	}
-	return e.outputCHTML(cSource, funcName, lines, page)
+	return e.outputCHTML(cSource, funcName, lines, step)
 }
 
 // outputCHTML outputs the C source code in HTML format, highlighting the specified lines.
@@ -90,8 +90,8 @@ func (e *explorer) outputC(cSource, funcName string, prim *primitive.Primitive, 
 //
 // - lines is the list of lines to highlight.
 //
-// - page is the page number of the visualization.
-func (e *explorer) outputCHTML(cSource, funcName string, lines [][2]int, page int) error {
+// - step is the intermediate step of the control flow analysis.
+func (e *explorer) outputCHTML(cSource, funcName string, lines [][2]int, step int) error {
 	// Get Chroma C lexer.
 	lexer := lexers.Get("c")
 	if lexer == nil {
@@ -131,7 +131,7 @@ func (e *explorer) outputCHTML(cSource, funcName string, lines [][2]int, page in
 	if err := e.cTmpl.Execute(htmlContent, data); err != nil {
 		return errors.WithStack(err)
 	}
-	htmlName := fmt.Sprintf("%s_c_%04d.html", funcName, page)
+	htmlName := fmt.Sprintf("%s_step_%04d_c.html", funcName, step)
 	htmlPath := filepath.Join(e.outputDir, htmlName)
 	dbg.Printf("creating file %q", htmlPath)
 	if err := ioutil.WriteFile(htmlPath, htmlContent.Bytes(), 0644); err != nil {
