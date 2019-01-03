@@ -53,7 +53,7 @@ func (e *explorer) outputOverview(funcName string, page, npages int) error {
 	}
 	htmlName := fmt.Sprintf("%s_%04d.html", funcName, page)
 	htmlPath := filepath.Join(e.outputDir, htmlName)
-	dbg.Printf("creating %q", htmlPath)
+	dbg.Printf("creating file %q", htmlPath)
 	if err := ioutil.WriteFile(htmlPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
 	}

@@ -158,7 +158,7 @@ func (e *explorer) explore(funcNames map[string]bool, force bool) error {
 	var funcs []*ir.Func
 	for _, f := range e.m.Funcs {
 		if len(funcNames) > 0 && !funcNames[f.Name()] {
-			dbg.Printf("skipping function %q.", f.Name())
+			dbg.Printf("skipping function %q", f.Name())
 			continue
 		}
 		funcs = append(funcs, f)
@@ -190,7 +190,7 @@ func (e *explorer) explore(funcNames map[string]bool, force bool) error {
 func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 	// Parse control flow primitives JSON file.
 	funcName := f.Name()
-	dbg.Printf("parsing primitives of function %q.", funcName)
+	dbg.Printf("parsing primitives of function %q", funcName)
 	prims, err := e.parsePrims(funcName)
 	if err != nil {
 		return errors.WithStack(err)
@@ -209,7 +209,14 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 		}
 		// Output original C source code.
 		if hasC {
-			if err := e.outputC(cSource, funcName, nil, page); err != nil {
+			var prim *primitive.Primitive
+			if page > 1 {
+				step := (page - 2) / 2
+				fmt.Println("page:", page)
+				fmt.Println("step:", step)
+				prim = prims[step]
+			}
+			if err := e.outputC(cSource, funcName, prim, page); err != nil {
 				return errors.WithStack(err)
 			}
 		}
@@ -256,7 +263,7 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 			if err != nil {
 				return errors.WithStack(err)
 			}
-			dbg.Printf("creating file %q.", htmlPath)
+			dbg.Printf("creating file %q", htmlPath)
 			if err := ioutil.WriteFile(htmlPath, htmlContent, 0644); err != nil {
 				return errors.WithStack(err)
 			}
@@ -350,7 +357,7 @@ func (e *explorer) genLLVMHighlight(f *ir.Func, prim *primitive.Primitive, step 
 
 	llvmHTMLName := fmt.Sprintf("%s_llvm_%04d.html", f.Name(), step)
 	llvmHTMLPath := filepath.Join(e.outputDir, llvmHTMLName)
-	dbg.Printf("creating %q", llvmHTMLPath)
+	dbg.Printf("creating file %q", llvmHTMLPath)
 	if err := ioutil.WriteFile(llvmHTMLPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
 	}
@@ -388,7 +395,7 @@ func (e *explorer) genOverview(funcName string, step, nsteps int) error {
 	// Store HTML file.
 	overviewHTMLName := fmt.Sprintf("%s_%04d.html", funcName, step)
 	overviewHTMLPath := filepath.Join(e.outputDir, overviewHTMLName)
-	dbg.Printf("creating %q", overviewHTMLPath)
+	dbg.Printf("creating file %q", overviewHTMLPath)
 	if err := ioutil.WriteFile(overviewHTMLPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
 	}
@@ -467,7 +474,7 @@ func (e *explorer) highlightGo(funcName string, step int) error {
 
 	htmlName := fmt.Sprintf("%s_go_%04d.html", funcName, step)
 	htmlPath := filepath.Join(e.outputDir, htmlName)
-	dbg.Printf("creating %q", htmlPath)
+	dbg.Printf("creating file %q", htmlPath)
 	if err := ioutil.WriteFile(htmlPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
 	}

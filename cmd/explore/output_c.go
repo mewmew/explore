@@ -65,8 +65,12 @@ func (e *explorer) parseC() (string, error) {
 func (e *explorer) outputC(cSource, funcName string, prim *primitive.Primitive, page int) error {
 	// Locate lines to highlight of control flow primitive.
 	var lines [][2]int
+	m := e.m
+	if e.dbg != nil {
+		m = e.dbg
+	}
 	if prim != nil {
-		f, err := findFunc(e.m, funcName)
+		f, err := findFunc(m, funcName)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -129,7 +133,7 @@ func (e *explorer) outputCHTML(cSource, funcName string, lines [][2]int, page in
 	}
 	htmlName := fmt.Sprintf("%s_c_%04d.html", funcName, page)
 	htmlPath := filepath.Join(e.outputDir, htmlName)
-	dbg.Printf("creating %q", htmlPath)
+	dbg.Printf("creating file %q", htmlPath)
 	if err := ioutil.WriteFile(htmlPath, htmlContent.Bytes(), 0644); err != nil {
 		return errors.WithStack(err)
 	}
@@ -152,12 +156,10 @@ func findCPath(llPath string, m *ir.Module) (string, bool) {
 		return cPath, true
 	}
 	if len(m.SourceFilename) > 0 && osutil.Exists(m.SourceFilename) {
-		fmt.Println("source_filename")
 		return m.SourceFilename, true
 	}
 	cPath := pathutil.TrimExt(llPath) + ".c"
 	if osutil.Exists(cPath) {
-		fmt.Println("exists")
 		return cPath, true
 	}
 	return "", false
