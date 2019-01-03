@@ -10,7 +10,7 @@
 		<link rel="stylesheet" href="inc/css/chroma_{{ .Style }}.css" id="chroma_style">
 		<script src="inc/js/style.js"></script>
 	</head>
-	<body onload="update_style();">
+	<body onload="update_style(); add_update_style_event_listener();">
 		<!-- Original C source code -->
 {{ .CCode }}
 	</body>
