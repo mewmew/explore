@@ -11,17 +11,14 @@
 		<script src="inc/js/style.js"></script>
 	</head>
 	<body onload="update_style_selection();">
-		<!-- Pagination -->
 		<div class="paginate-container">
 			<div class="pagination">
 				<a href="{{ .FuncName }}_0001.html">«</a>
-				<!-- Previous page -->
 {{- if ge .PrevPage 1 }}
 				<a href="{{ .FuncName }}_{{ printf "%04d" .PrevPage }}.html" class="previous_page">Previous</a>
 {{- else }}
 				<span class="previous_page disabled">Previous</span>
 {{- end }}
-				<!-- Pages -->
 {{- range $i, $page := .Pages }}
 	{{- if eq $page $root.CurPage }}
 				<em class="current">{{ $page }}</em>
@@ -29,7 +26,6 @@
 				<a href="{{ $root.FuncName }}_{{ printf "%04d" $page }}.html">{{ $page }}</a>
 	{{- end }}
 {{- end }}
-				<!-- Next page -->
 {{- if le .NextPage .NPages }}
 				<a href="{{ .FuncName }}_{{ printf "%04d" .NextPage }}.html" class="next_page">Next</a>
 {{- else }}
@@ -37,7 +33,6 @@
 {{- end }}
 				<a href="{{ .FuncName }}_{{ printf "%04d" .NPages }}.html">»</a>
 			</div>
-			<!-- Style selection -->
 			<select id="style_selection" onchange="select_style();">
 	{{- range $i, $style := .Styles }}
 				<option value="{{ $style }}" onclick="set_style('{{ $style }}');" {{- if eq $style $root.Style }} selected {{- end }}>{{ $style }}</option>
@@ -52,10 +47,10 @@
 				<th>Reconstructed Go source code</th>
 			</tr>
 			<tr>
-				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}_c.html" id="frame_c" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}_llvm.html" id="frame_llvm" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}{{ .SubStep }}_cfa.html" id="frame_cfa" frameborder="0" width="100%" height="800px"></iframe></td>
-				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}{{ .SubStep }}_go.html" id="frame_go" frameborder="0" width="100%" height="800px"></iframe></td>
+				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}_c.html" id="frame_c" frameborder="0" width="100%" height="1200px"></iframe></td>
+				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}_llvm.html" id="frame_llvm" frameborder="0" width="100%" height="1200px"></iframe></td>
+				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}{{ .SubStep }}_cfa.html" id="frame_cfa" frameborder="0" width="100%" height="1200px"></iframe></td>
+				<td><iframe src="{{ .FuncName }}_step_{{ printf "%04d" .Step }}{{ .SubStep }}_go.html" id="frame_go" frameborder="0" width="100%" height="1200px"></iframe></td>
 			</tr>
 		</table>
 	</body>

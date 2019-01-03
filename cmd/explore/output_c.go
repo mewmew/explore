@@ -82,7 +82,8 @@ func (e *explorer) outputC(cSource, funcName string, prim *primitive.Primitive, 
 	return e.outputCHTML(cSource, funcName, lines, step)
 }
 
-// outputCHTML outputs the C source code in HTML format, highlighting the specified lines.
+// outputCHTML outputs the C source code in HTML format, highlighting the
+// specified lines.
 //
 // - cSource is the contents of the original C source code.
 //
@@ -125,7 +126,6 @@ func (e *explorer) outputCHTML(cSource, funcName string, lines [][2]int, step in
 	data := map[string]interface{}{
 		"FuncName": funcName,
 		"Style":    e.style,
-		"Styles":   styles.Names(),
 		"CCode":    template.HTML(cCode.String()),
 	}
 	if err := e.cTmpl.Execute(htmlContent, data); err != nil {
@@ -174,7 +174,8 @@ func findCHighlight(f *ir.Func, prim *primitive.Primitive) ([][2]int, error) {
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		lines = append(lines, findBlockLines(block)...)
+		blockLines := findBlockLines(block)
+		lines = append(lines, blockLines...)
 	}
 	return lines, nil
 }

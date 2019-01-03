@@ -203,7 +203,14 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 	hasC := len(cSource) > 0
 	npages := 1 + 2*len(prims)
 	for page := 1; page <= npages; page++ {
-		// Overview.
+		// Output overview.
+		//
+		//    page 1: step 0
+		//    page 2: step 1a
+		//    page 3: step 1b
+		//    page 4: step 2a
+		//    page 5: step 2b
+		//    ...
 		step := page / 2
 		if err := e.outputOverview(funcName, page, npages, step); err != nil {
 			return errors.WithStack(err)
@@ -212,14 +219,20 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 	nsteps := len(prims)
 	for step := 0; step <= nsteps; step++ {
 		// Output original C source code.
+		var prim *primitive.Primitive
+		if step > 0 {
+			// Visualize control flow analysis of recovered control flow primitive,
+			// except for on step 0.
+			prim = prims[step-1]
+		}
 		if hasC {
-			var prim *primitive.Primitive
-			if step > 0 {
-				prim = prims[step-1]
-			}
 			if err := e.outputC(cSource, funcName, prim, step); err != nil {
 				return errors.WithStack(err)
 			}
+		}
+		// Output original LLVM IR assembly.
+		if err := e.outputLLVM(funcName, prim, step); err != nil {
+			return errors.WithStack(err)
 		}
 	}
 
@@ -305,66 +318,6 @@ func (e *explorer) genStep(f *ir.Func, prim *primitive.Primitive, step, nsteps i
 	return buf.Bytes(), nil
 }
 
-// genLLVMHighlight generates a visualization in HTML format of the intermediate
-// step of the control flow analysis, highlighting the lines of the LLVM IR for
-// the corresponding basic blocks of the recovered high-level control flow
-// primitive.
-func (e *explorer) genLLVMHighlight(f *ir.Func, prim *primitive.Primitive, step int) error {
-	// Get Chroma LLVM IR lexer.
-	lexer := lexers.Get("llvm")
-	if lexer == nil {
-		lexer = lexers.Fallback
-	}
-	//lexer = chroma.Coalesce(lexer)
-	// Get Chrome style.
-	style := styles.Get(e.style)
-	if style == nil {
-		style = styles.Fallback
-	}
-	// Get Chroma HTML formatter.
-	// Line number ranges to highlight; 1-based line numbers, inclusive.
-	var highlightRanges [][2]int
-	for _, blockName := range prim.Nodes {
-		block, err := findBlock(f, blockName)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		highlightRange := lineRangeOfBlock(f, block)
-		highlightRanges = append(highlightRanges, highlightRange)
-	}
-	formatter := html.New(
-		html.TabWidth(3),
-		html.WithLineNumbers(),
-		html.WithClasses(),
-		html.LineNumbersInTable(),
-		html.HighlightLines(highlightRanges),
-	)
-
-	// Write CSS.
-	htmlContent := &bytes.Buffer{}
-	htmlContent.WriteString("<!DOCTYPE html><html><head><style>")
-	if err := formatter.WriteCSS(htmlContent, style); err != nil {
-		return errors.WithStack(err)
-	}
-	iterator, err := lexer.Tokenise(nil, f.LLString())
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	htmlContent.WriteString("</style></head><body>")
-	if err := formatter.Format(htmlContent, style, iterator); err != nil {
-		return errors.WithStack(err)
-	}
-	htmlContent.WriteString("</body></html>")
-
-	llvmHTMLName := fmt.Sprintf("%s_llvm_%04d.html", f.Name(), step)
-	llvmHTMLPath := filepath.Join(e.outputDir, llvmHTMLName)
-	dbg.Printf("creating file %q", llvmHTMLPath)
-	if err := ioutil.WriteFile(llvmHTMLPath, htmlContent.Bytes(), 0644); err != nil {
-		return errors.WithStack(err)
-	}
-	return nil
-}
-
 // genOverview generates an overview in HTML of the intermediate step of the
 // decompilation.
 func (e *explorer) genOverview(funcName string, step, nsteps int) error {
@@ -401,22 +354,6 @@ func (e *explorer) genOverview(funcName string, step, nsteps int) error {
 		return errors.WithStack(err)
 	}
 	return nil
-}
-
-// lineRangeOfBlock returns the line number range (1-based: [start, end]) of the
-// basic block in the given function.
-func lineRangeOfBlock(f *ir.Func, block *ir.Block) [2]int {
-	funcStr := f.LLString()
-	blockStr := block.LLString()
-	pos := strings.Index(funcStr, blockStr)
-	if pos == -1 {
-		panic(fmt.Errorf("unable to locate contents of basic block %v in contents of function %v", block.Ident(), f.Ident()))
-	}
-	before := funcStr[:pos]
-	start := 1 + strings.Count(before, "\n")
-	n := strings.Count(blockStr, "\n")
-	end := start + n
-	return [2]int{start, end}
 }
 
 // highlightGo outputs a highlighted Go source file, highlighting the lines
