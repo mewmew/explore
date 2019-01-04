@@ -32,6 +32,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/llir/llvm/ir"
@@ -158,6 +161,10 @@ func (e *explorer) explore(funcNames map[string]bool, force bool) error {
 	if err := e.init(force); err != nil {
 		return errors.WithStack(err)
 	}
+	// Generate control flow graphs in DOT format.
+	if err := e.outputCFGs(funcNames); err != nil {
+		return errors.WithStack(err)
+	}
 	// Generate a visualization of the control flow analysis performed on each
 	// function.
 	for _, f := range funcs {
@@ -178,8 +185,12 @@ func (e *explorer) explore(funcNames map[string]bool, force bool) error {
 //
 // - f is the function to visualize.
 func (e *explorer) outputFuncVisualization(f *ir.Func) error {
-	// Parse control flow primitives JSON file.
+	// Generate control flow primtives in JSON format.
 	funcName := f.Name()
+	if err := e.outputPrims(funcName); err != nil {
+		return errors.WithStack(err)
+	}
+	// Parse control flow primitives JSON file.
 	dbg.Printf("parsing primitives of function %q", funcName)
 	prims, err := e.parsePrims(funcName)
 	if err != nil {
@@ -233,6 +244,50 @@ func (e *explorer) outputFuncVisualization(f *ir.Func) error {
 		if err := e.outputLLVM(funcName, prim, step); err != nil {
 			return errors.WithStack(err)
 		}
+	}
+	return nil
+}
+
+// outputCFGs outputs the control flow graphs of the given LLVM IR module by
+// running the ll2dot tool.
+//
+// - funcNames specifies the set of function names for which to generate
+//   visualizations. When funcNames is emtpy, visualizations are generated for
+//   all function definitions of the module.
+func (e *explorer) outputCFGs(funcNames map[string]bool) error {
+	var args []string
+	if len(funcNames) > 0 {
+		var funcs []string
+		for funcName := range funcNames {
+			funcs = append(funcs, funcName)
+		}
+		sort.Strings(funcs)
+		args = append(args, "-funcs", strings.Join(funcs, ","))
+	}
+	args = append(args, "-f", "-img", e.llPath)
+	cmd := exec.Command("ll2dot2", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+// outputPrims outputs the recovered control flow primitives of the given LLVM
+// IR module by running the restructure tool.
+func (e *explorer) outputPrims(funcName string) error {
+	jsonName := funcName + ".json"
+	jsonPath := filepath.Join(e.dotDir, jsonName)
+	dotName := funcName + ".dot"
+	dotPath := filepath.Join(e.dotDir, dotName)
+	cmd := exec.Command("restructure2", "-steps", "-img", "-indent", "-o", jsonPath, dotPath)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return errors.WithStack(err)
 	}
 	return nil
 }
