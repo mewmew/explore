@@ -170,6 +170,10 @@ func findCPath(llPath string, m *ir.Module) (string, bool) {
 func findCHighlight(f *ir.Func, prim *primitive.Primitive) ([][2]int, error) {
 	var lines [][2]int
 	for _, blockName := range prim.Nodes {
+		// Skip lines of exit block.
+		if blockName == prim.Exit {
+			continue
+		}
 		block, err := findBlock(f, blockName)
 		if err != nil {
 			return nil, errors.WithStack(err)
